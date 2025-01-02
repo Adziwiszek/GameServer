@@ -1,8 +1,5 @@
-{-# LANGUAGE DeriveGeneric #-}
+module Server (startServer) where
 
-module Server where
-
-import GHC.Generics (Generic)
 import Network.Socket
 import System.IO
 import Control.Exception
@@ -10,42 +7,17 @@ import Control.Concurrent
 import Control.Monad (when)
 import Control.Monad.Fix (fix)
 import qualified Data.Map as Map
-import qualified Data.ByteString.Lazy as BSL
-import Data.Binary
-import Data.Int
 
--- import GameServer
+import Message
 
 type Msg = (Int, String)
 type RoomName = String
 -- zmienna współdzielona przez wątki
 type RoomMap = MVar (Map.Map RoomName (Chan Msg)) 
 
-{- data Message = Message {
-  messageType :: String,
-  content :: String,
-  messageId :: Int
-} deriving (Generic, Show)
-
-instance Binary Message 
-
-sendMessage :: Handle -> Message -> IO ()
-sendMessage hdl msg = do
-  let encoded = encode msg
-  BSL.hPut hdl (encode (BSL.length encoded))
-  BSL.hPut hdl encoded
-  hFlush hdl
-
-receiveMessage :: Handle -> IO Message 
-receiveMessage hdl = do
-  sizeBS <- BSL.hGet hdl 8
-  let size = decode  sizeBS :: Int64
-  msgBS <- BSL.hGet hdl (fromIntegral size)
-  return $ decode msgBS -}
   
 {--
  - TODO
- - połączyć serwer i klienta w jeden projekt, wybieranie którego uruchomić argumentami
  - rozbudować type message o stan gry, można przesyłać albo stan gry albo wiadomość albo ruch (od klienta)
  - dodać limit osób w pokoju, który jest taki jaki jaka jest maks liczba osób do gry
  - przygotować typy dla gry
