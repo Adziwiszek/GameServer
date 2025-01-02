@@ -6,6 +6,7 @@ import Control.Exception
 import Control.Concurrent
 import Control.Monad (when)
 import Control.Monad.Fix (fix)
+import Data.Functor
 import qualified Data.Map as Map
 
 import Message
@@ -43,41 +44,37 @@ mainLoop sock rooms msgNum = do
   _ <- forkIO (runConn conn rooms msgNum)
   mainLoop sock rooms $! msgNum + 1
 
+
 runConn :: (Socket, SockAddr) -> RoomMap -> Int -> IO ()
 runConn (sock, _) rooms msgNum = do
   putStrLn "someone joined!"
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
-  let welcomeMessage = Message {
-    messageType = "msg",
-    content = "witaj ufoludzie",
-    messageId = 1
-  }
-  sendMessage hdl welcomeMessage
-  hPutStrLn hdl "Welcome to the chat server!"
-  hPutStrLn hdl "Enter room name to join or create:"
-  roomName <- fmap init (hGetLine hdl)
+  sendStr hdl "witaj ufoludzie"
+  sendStr hdl "Welcome to the chat server!\nEnter room name to join or create:"
+  -- receiveMessage hdl >>= return . content 
+  roomName <- fmap init (receiveMessage hdl <&> content) 
   putStrLn $ "client wants to go to room: " ++ roomName
 
   (roomChan, is_admin) <- modifyMVar rooms $ \roomMap -> do
     case Map.lookup roomName roomMap of
       Just chan -> do
-        hPutStrLn hdl "Joining room"
+        sendStr hdl "Joining room"
         return (roomMap, (chan, False)) -- Pokój istnieje
       Nothing -> do
-        hPutStrLn hdl "Creating room"
+        sendStr hdl "Creating room"
         chan <- newChan -- Tworzenie nowego pokoju
         return (Map.insert roomName chan roomMap, (chan, True))
 
   let broadcast msg = writeChan roomChan (msgNum, msg)
-  hPutStrLn hdl ("Joined room: " ++ roomName)
-  when is_admin (hPutStrLn hdl "you are an admin!")
+  sendStr hdl ("Joined room: " ++ roomName)
+  when is_admin (sendStr hdl "you are an admin!")
 
-  hPutStrLn hdl "Hi, what is your name?"
-  name <- fmap init (hGetLine hdl)
+  sendStr hdl "Hi, what is your name?"
+  name <- fmap init (receiveMessage hdl <&> content)
   putStrLn $ "client name: " ++ name
   broadcast ("--> " ++ name ++ " entered chat.")
-  hPutStrLn hdl ("Welcome, " ++ name ++ "!")
+  sendStr hdl ("Welcome, " ++ name ++ "!")
 
   commLine <- dupChan roomChan
 
@@ -86,21 +83,21 @@ runConn (sock, _) rooms msgNum = do
   -- i przesyłanie ich do klienta (jeśli wiadomość nie pochodzi od niego)
   reader <- forkIO $ fix $ \loop -> do
       (nextNum, line) <- readChan commLine
-      when (msgNum /= nextNum) $ hPutStrLn hdl line
+      when (msgNum /= nextNum) $ sendStr hdl line
       loop
 
   -- handle odpowiada za odczytywanie wiadomości od użytkownika i broadcastowanie
   -- ich do reszty użytkowników
   handle (\(SomeException e) -> putStrLn $ "Server error: " ++ show e) $ fix $ \loop -> do
-      line <- fmap init (hGetLine hdl)
+      line <- fmap init (receiveMessage hdl <&> content)
       case line of
         -- If an exception is caught, send a message and break the loop
         "quit" -> do
-          hPutStrLn hdl "Bye!"
+          sendStr hdl "Bye!"
           putStrLn $ "user " ++ name ++ " is quiting.."
         ':' : rest -> do
           when is_admin (putStrLn $ "user used command " ++ rest)
-          hPutStrLn hdl "ads"
+          sendStr hdl "ads"
           loop
         -- else, continue looping.
         _      -> broadcast (name ++ ": " ++ line) >> loop

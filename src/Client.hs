@@ -25,8 +25,8 @@ startClient = do
             hdl <- socketToHandle sock ReadWriteMode
             hSetBuffering hdl NoBuffering
             -- testing message 
-            welcomeMessage <- receiveMessage hdl
-            putStrLn $ content welcomeMessage
+            {-welcomeMessage <- receiveMessage hdl
+            putStrLn $ content welcomeMessage-}
             return (sock, hdl)
             
         cleanup (sock, hdl) = do
@@ -39,16 +39,17 @@ handleConnection (_, hdl) = do
   messageChan <- newChan
 
   readerThread <- forkIO $ fix $ \loop -> do
-    msg <- hGetLine hdl
-    putStrLn msg
-    case msg of
+    msg <- receiveMessage hdl
+    let msgContent = content msg
+    putStrLn msgContent
+    case msgContent of
       -- when we get Bye message we signal main thread to finish
       "Bye!" -> writeChan messageChan "DISCONNECT"
       _ -> loop
 
   handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
     msg <- getLine
-    hPutStrLn hdl $ msg ++ " "
+    sendStr hdl (msg ++ " ")
     case msg of
       "quit" -> do
         result <- timeout 500000 $ readChan messageChan
