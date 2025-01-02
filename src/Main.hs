@@ -2,6 +2,7 @@ module Main (main) where
 
 import System.Environment
 
+import Client
 import Server
 
 data AppType 
@@ -28,6 +29,8 @@ main = do
   appType <- getArgs >>= parse
   case appType of 
     Server -> startServer
-    _ -> putStrLn "not implemeted"
+    Client -> startClient
+    Tooltip -> return ()
+    -- _ -> putStrLn "not implemeted"
   
    
