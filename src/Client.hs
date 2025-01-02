@@ -1,17 +1,13 @@
-{-# LANGUAGE DeriveGeneric #-}
+module Client (startClient) where
 
-module Client where
-
-import GHC.Generics (Generic)
 import Network.Socket
 import System.IO
 import Control.Exception (bracket, try, handle, SomeException(..))
 import Control.Monad.Fix (fix)
 import Control.Concurrent
 import System.Timeout
-import qualified Data.ByteString.Lazy as BSL
-import Data.Binary
-import Data.Int
+
+import Message
 
 startClient :: IO ()
 startClient = do
@@ -28,6 +24,9 @@ startClient = do
             connect sock (addrAddress addr)
             hdl <- socketToHandle sock ReadWriteMode
             hSetBuffering hdl NoBuffering
+            -- testing message 
+            welcomeMessage <- receiveMessage hdl
+            putStrLn $ content welcomeMessage
             return (sock, hdl)
             
         cleanup (sock, hdl) = do

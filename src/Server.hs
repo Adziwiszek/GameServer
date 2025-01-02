@@ -48,6 +48,12 @@ runConn (sock, _) rooms msgNum = do
   putStrLn "someone joined!"
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
+  let welcomeMessage = Message {
+    messageType = "msg",
+    content = "witaj ufoludzie",
+    messageId = 1
+  }
+  sendMessage hdl welcomeMessage
   hPutStrLn hdl "Welcome to the chat server!"
   hPutStrLn hdl "Enter room name to join or create:"
   roomName <- fmap init (hGetLine hdl)
