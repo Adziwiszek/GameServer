@@ -12,9 +12,7 @@ import qualified Data.Map as Map
 import Message
 
 type Msg = (Int, String)
-type RoomName = String
 -- zmienna współdzielona przez wątki
-type RoomMap = MVar (Map.Map RoomName (Chan Msg)) 
 
   
 {--
@@ -32,43 +30,24 @@ startServer = do
   setSocketOption sock ReuseAddr 1
   bind sock (SockAddrInet 4242 0)
   listen sock 2
-  rooms <- newMVar Map.empty 
+  chan <- newChan
   putStrLn "Running server on localhost, port = 4242"
-  mainLoop sock rooms 0
+  mainLoop sock chan 0
 
-mainLoop :: Socket -> RoomMap -> Int -> IO ()
-mainLoop sock rooms msgNum = do
+mainLoop :: Socket -> Chan Msg -> Int -> IO ()
+mainLoop sock chan msgNum = do
   putStrLn "waiting for a connection..."
   conn <- accept sock
   putStrLn "connection accepted!"
-  _ <- forkIO (runConn conn rooms msgNum)
-  mainLoop sock rooms $! msgNum + 1
+  _ <- forkIO (runConn conn chan msgNum)
+  mainLoop sock chan $! msgNum + 1
 
 
-runConn :: (Socket, SockAddr) -> RoomMap -> Int -> IO ()
-runConn (sock, _) rooms msgNum = do
-  putStrLn "someone joined!"
+runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
+runConn (sock, _) chan msgNum = do
+  let broadcast msg = writeChan chan (msgNum, msg)
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
-  sendStr hdl "witaj ufoludzie"
-  sendStr hdl "Welcome to the chat server!\nEnter room name to join or create:"
-  -- receiveMessage hdl >>= return . content 
-  roomName <- fmap init (receiveMessage hdl <&> content) 
-  putStrLn $ "client wants to go to room: " ++ roomName
-
-  (roomChan, is_admin) <- modifyMVar rooms $ \roomMap -> do
-    case Map.lookup roomName roomMap of
-      Just chan -> do
-        sendStr hdl "Joining room"
-        return (roomMap, (chan, False)) -- Pokój istnieje
-      Nothing -> do
-        sendStr hdl "Creating room"
-        chan <- newChan -- Tworzenie nowego pokoju
-        return (Map.insert roomName chan roomMap, (chan, True))
-
-  let broadcast msg = writeChan roomChan (msgNum, msg)
-  sendStr hdl ("Joined room: " ++ roomName)
-  when is_admin (sendStr hdl "you are an admin!")
 
   sendStr hdl "Hi, what is your name?"
   name <- fmap init (receiveMessage hdl <&> content)
@@ -76,7 +55,7 @@ runConn (sock, _) rooms msgNum = do
   broadcast ("--> " ++ name ++ " entered chat.")
   sendStr hdl ("Welcome, " ++ name ++ "!")
 
-  commLine <- dupChan roomChan
+  commLine <- dupChan chan
 
   -- fork off a thread for reading from the duplicated channel
   -- ten wątek jest odpowiedzialny za czytanie wiadomości z kanału 
@@ -96,8 +75,7 @@ runConn (sock, _) rooms msgNum = do
           sendStr hdl "Bye!"
           putStrLn $ "user " ++ name ++ " is quiting.."
         ':' : rest -> do
-          when is_admin (putStrLn $ "user used command " ++ rest)
-          sendStr hdl "ads"
+          putStrLn $ "coommand used: " ++ rest
           loop
         -- else, continue looping.
         _      -> broadcast (name ++ ": " ++ line) >> loop

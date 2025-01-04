@@ -8,6 +8,13 @@ import Data.Binary
 import Data.Int
 import System.IO
 
+newtype Board = Board [Int]
+
+data MessageType
+  = Text
+  | GameState
+  | PlayerMove
+
 data Message = Message {
   messageType :: String,
   content :: String
