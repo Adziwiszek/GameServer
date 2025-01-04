@@ -4,11 +4,10 @@ module Message (module Message) where
 
 import GHC.Generics (Generic)
 import qualified Data.ByteString.Lazy as BSL
+import Control.Concurrent
 import Data.Binary
 import Data.Int
 import System.IO
-
-newtype Board = Board [Int]
 
 data MessageType
   = Text
@@ -19,6 +18,7 @@ data MessageType
 data MessageTarget 
   = All
   | Normal -- don't send ones message to themselves
+  | Server -- don't send to players 
   deriving (Generic, Show) 
 
 data Message = Message {
@@ -31,6 +31,14 @@ data Message = Message {
 instance Binary MessageTarget
 instance Binary MessageType
 instance Binary Message 
+
+_broadcast :: Chan Message -> String -> String -> MessageTarget -> Int -> IO ()
+_broadcast chan msg typ targ sID = writeChan chan $ Message {
+    messageType=typ,
+    messageTarget=targ,
+    content=msg,
+    senderID=sID
+  }
 
 sendMessage :: Handle -> Message -> IO ()
 sendMessage hdl msg = do
