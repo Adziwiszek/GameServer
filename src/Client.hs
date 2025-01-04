@@ -49,7 +49,7 @@ handleConnection (_, hdl) = do
 
   handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
     msg <- getLine
-    sendStr hdl (msg ++ " ")
+    sendStr hdl (msg ++ " ") 0
     case msg of
       "quit" -> do
         result <- timeout 500000 $ readChan messageChan

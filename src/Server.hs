@@ -12,7 +12,9 @@ import qualified Data.Map as Map
 import Message
 
 type Msg = (Int, String)
+type RoomName = String
 -- zmienna współdzielona przez wątki
+type RoomMap = MVar (Map.Map RoomName (Chan Msg)) 
 
   
 {--
@@ -34,7 +36,7 @@ startServer = do
   putStrLn "Running server on localhost, port = 4242"
   mainLoop sock chan 0
 
-mainLoop :: Socket -> Chan Msg -> Int -> IO ()
+mainLoop :: Socket -> Chan Message -> Int -> IO ()
 mainLoop sock chan msgNum = do
   putStrLn "waiting for a connection..."
   conn <- accept sock
@@ -43,17 +45,20 @@ mainLoop sock chan msgNum = do
   mainLoop sock chan $! msgNum + 1
 
 
-runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
+runConn :: (Socket, SockAddr) -> Chan Message -> Int -> IO ()
 runConn (sock, _) chan msgNum = do
-  let broadcast msg = writeChan chan (msgNum, msg)
+  let playerID = msgNum
+
+  let putInMsg con typ target = Message { messageTarget=target, messageType=typ, content=con, senderID = playerID }
+  let broadcast msg typ targ = writeChan chan $ putInMsg msg typ targ
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
 
-  sendStr hdl "Hi, what is your name?"
+  sendStr hdl "Hi, what is your name?" playerID
   name <- fmap init (receiveMessage hdl <&> content)
   putStrLn $ "client name: " ++ name
-  broadcast ("--> " ++ name ++ " entered chat.")
-  sendStr hdl ("Welcome, " ++ name ++ "!")
+  broadcast ("--> " ++ name ++ " entered chat.") "msg" Normal
+  sendStr hdl ("Welcome, " ++ name ++ "!") playerID
 
   commLine <- dupChan chan
 
@@ -61,9 +66,14 @@ runConn (sock, _) chan msgNum = do
   -- ten wątek jest odpowiedzialny za czytanie wiadomości z kanału 
   -- i przesyłanie ich do klienta (jeśli wiadomość nie pochodzi od niego)
   reader <- forkIO $ fix $ \loop -> do
-      (nextNum, line) <- readChan commLine
-      when (msgNum /= nextNum) $ sendStr hdl line
-      loop
+      newMsg <- readChan commLine
+      case messageTarget newMsg of
+        Normal -> do
+          when (msgNum /= senderID newMsg) $ sendStr hdl (content newMsg) (senderID newMsg)
+          loop
+        All -> do
+          sendStr hdl (content newMsg) (senderID newMsg) 
+          loop
 
   -- handle odpowiada za odczytywanie wiadomości od użytkownika i broadcastowanie
   -- ich do reszty użytkowników
@@ -72,14 +82,17 @@ runConn (sock, _) chan msgNum = do
       case line of
         -- If an exception is caught, send a message and break the loop
         "quit" -> do
-          sendStr hdl "Bye!"
+          sendStr hdl "Bye!" playerID
           putStrLn $ "user " ++ name ++ " is quiting.."
+        ':' : "start" -> do
+          broadcast "Starting the game..." "msg" All
+          loop
         ':' : rest -> do
-          putStrLn $ "coommand used: " ++ rest
+          putStrLn $ "command used: " ++ rest
           loop
         -- else, continue looping.
-        _      -> broadcast (name ++ ": " ++ line) >> loop
+        _      -> broadcast (name ++ ": " ++ line) "msg" Normal >> loop
 
-  killThread reader                      -- kill after the loop ends
-  broadcast ("<-- " ++ name ++ " left.") -- make a final broadcast
-  hClose hdl                             -- close the handle
+  killThread reader                      
+  broadcast ("<-- " ++ name ++ " left.") "msg" Normal
+  hClose hdl                             

@@ -14,12 +14,22 @@ data MessageType
   = Text
   | GameState
   | PlayerMove
+  deriving (Generic, Show)
+
+data MessageTarget 
+  = All
+  | Normal -- don't send ones message to themselves
+  deriving (Generic, Show) 
 
 data Message = Message {
   messageType :: String,
-  content :: String
+  messageTarget :: MessageTarget,
+  content :: String,
+  senderID :: Int
 } deriving (Generic, Show)
 
+instance Binary MessageTarget
+instance Binary MessageType
 instance Binary Message 
 
 sendMessage :: Handle -> Message -> IO ()
@@ -49,11 +59,13 @@ receiveMessage hdl = do
   --putStrLn "received message content"
   return $ decode msgBS 
 
-smsg :: String -> Message
-smsg str = Message {
+smsg :: String -> Int -> Message
+smsg str id = Message {
   messageType = "msg",
-  content = str
+  content = str,
+  senderID = id,
+  messageTarget = All
 }
 
-sendStr :: Handle -> String -> IO ()
-sendStr hdl str = sendMessage hdl $ smsg str
+sendStr :: Handle -> String -> Int -> IO ()
+sendStr hdl str id = sendMessage hdl $ smsg str id
