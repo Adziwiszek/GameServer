@@ -33,7 +33,7 @@ newtype Board = Board [Maybe Player]
 instance Show Board where
   show (Board board) = 
     foldl (\acc (i, x) -> acc ++ " " ++
-      maybe (show i) show x ++
+      maybe " " show x ++
       (if i `mod` 3 == 0 || i `mod` 3 == 1 
         then " |" 
         else 
@@ -137,36 +137,39 @@ instance (Show s, Read a, Read b) => TwoPlayerGame (IOGame s a b) s a b where
     putStrLn "Podaj ruch gracza B (liczba oznaczająca pole):"
     readLn -}
 
-type Players = [(Int, Handle)]
 type InChan = Chan Message
 type OutChan = Chan Message
-newtype NetworkGame s a b x = NetworkGame { runNetworkGame :: InChan -> OutChan -> Players -> IO x }
+type Players = [(Int, Chan Message, Handle)]
+type Turn = MVar Int
+newtype NetworkGame s a b x = NetworkGame { runNetworkGame :: OutChan -> Players -> Turn -> IO x }
 
 instance Functor (NetworkGame s a b) where
-  fmap f (NetworkGame io) = NetworkGame $ \inchan outchan players -> fmap f (io inchan outchan players)
+  fmap f (NetworkGame io) = NetworkGame $ \outchan players turn -> fmap f (io outchan players turn)
 
 instance Applicative (NetworkGame s a b) where
   pure x = NetworkGame $ \_ _ _ -> pure x
-  NetworkGame f <*> NetworkGame x = NetworkGame $ \inchan outchan players -> f inchan outchan players <*> x inchan outchan players
+  NetworkGame f <*> NetworkGame x = NetworkGame $ \outchan players turn 
+    -> f outchan players turn <*> x outchan players turn
 
 instance Monad (NetworkGame s a b) where
-  NetworkGame x >>= f = NetworkGame $ \inchan outchan players -> do
-    result <- x inchan outchan players
-    runNetworkGame (f result) inchan outchan players
+  NetworkGame x >>= f = NetworkGame $ \outchan players turn -> do
+    result <- x outchan players turn
+    runNetworkGame (f result) outchan players turn
 
-movePlayer board player = NetworkGame $ \inchan outchan _ -> do
+movePlayer board player = NetworkGame $ \outchan players turn -> do
     let pID = case player of
           PlayerA -> 0
           PlayerB -> 1
-    _broadcast outchan ("Turn of " ++ show player ++" Current board: " ++ show board) GameState All (-1)
+    modifyMVar_ turn $ \_ -> return pID
+    let inchan = case lookup pID $ map (\(_pId, chan, _) -> (_pId, chan)) players of
+          Nothing -> error $ "No channel for player with ID = " ++ show pID
+          Just chan -> chan
 
-    putStrLn $ "current player has id = " ++ show pID
+    _broadcast outchan ("Turn of " ++ show player ++" Current board: " ++ show board) GameState All (-1)
+    sendToPlayer outchan pID "Your turn"    
 
     msg <- fix $ \loop -> do
       testMsg <- readChan inchan 
-      
-      putStrLn $ "testing input... " ++ show (content testMsg)
-
       if senderID testMsg == pID then
         return testMsg
       else do
@@ -178,10 +181,10 @@ instance (Show s, Read a, Read b) => TwoPlayerGame (NetworkGame s a b) s a b whe
   moveA board = movePlayer board PlayerA
   moveB board = movePlayer board PlayerB
 
-runGame :: InChan -> OutChan -> Players -> IO ()
-runGame inchan outchan players = do
+runGame :: OutChan -> Players -> Turn -> IO ()
+runGame outchan players turn = do
   let game' :: NetworkGame Board AMove BMove (Score, Board)
       game' = game
-  (result, finalBoard) <- runNetworkGame game' inchan outchan players
+  (result, finalBoard) <- runNetworkGame game' outchan players turn
   _broadcast outchan ("Current board: " ++ show finalBoard) GameState All 0
   _broadcast outchan ("Wynik gry: " ++ show result) Text All 0
