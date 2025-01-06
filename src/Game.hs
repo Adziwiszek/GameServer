@@ -137,7 +137,7 @@ instance (Show s, Read a, Read b) => TwoPlayerGame (IOGame s a b) s a b where
     putStrLn "Podaj ruch gracza B (liczba oznaczająca pole):"
     readLn -}
 
-type Players = [Handle]
+type Players = [(Int, Handle)]
 type InChan = Chan Message
 type OutChan = Chan Message
 newtype NetworkGame s a b x = NetworkGame { runNetworkGame :: InChan -> OutChan -> Players -> IO x }
@@ -154,37 +154,29 @@ instance Monad (NetworkGame s a b) where
     result <- x inchan outchan players
     runNetworkGame (f result) inchan outchan players
 
-instance (Show s, Read a, Read b) => TwoPlayerGame (NetworkGame s a b) s a b where
-  moveA board = NetworkGame $ \inchan outchan players -> do
-    _broadcast outchan ("Player A's turn. Current board: " ++ show board) GameState All 0
-    putStrLn "Waiting for Player A's move..."
-    _broadcast outchan "Your move" Text (ToPlayer 0) 0
+movePlayer board player = NetworkGame $ \inchan outchan _ -> do
+    let pID = case player of
+          PlayerA -> 0
+          PlayerB -> 1
+    _broadcast outchan ("Turn of " ++ show player ++" Current board: " ++ show board) GameState All (-1)
+
+    putStrLn $ "current player has id = " ++ show pID
+
     msg <- fix $ \loop -> do
       testMsg <- readChan inchan 
-      putStrLn $ "testMsg = " ++ show (content testMsg)
-      if senderID testMsg == 0 then
+      
+      putStrLn $ "testing input... " ++ show (content testMsg)
+
+      if senderID testMsg == pID then
         return testMsg
       else do
         _broadcast outchan "Move from wrong player!" Text All 0
         loop
-    --putStrLn $ "player A move: " ++ show (content msg)
     return (read (content msg))
 
-  moveB board = NetworkGame $ \inchan outchan players -> do
-    _broadcast outchan ("Player B's turn. Current board: " ++ show board) GameState All 0
-    putStrLn "Waiting for Player B's move..."
-    _broadcast outchan "Your move" Text (ToPlayer 1) 1
-    msg <- fix $ \loop -> do
-      testMsg <- readChan inchan 
-      putStrLn "DUPA"
-      putStrLn $ "testMsg = " ++ show (content testMsg)
-      if senderID testMsg == 1 then
-        return testMsg
-      else do
-        _broadcast outchan "Move from wrong player!" Text All 0
-        loop
-    --putStrLn $ "player A move: " ++ show (content msg)
-    return (read (content msg))
+instance (Show s, Read a, Read b) => TwoPlayerGame (NetworkGame s a b) s a b where
+  moveA board = movePlayer board PlayerA
+  moveB board = movePlayer board PlayerB
 
 runGame :: InChan -> OutChan -> Players -> IO ()
 runGame inchan outchan players = do
