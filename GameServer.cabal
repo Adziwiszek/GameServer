@@ -28,7 +28,9 @@ executable GameServer
                        bytestring >= 0.10,
                        containers,
                        mtl,
-                       binary
+                       binary,
+                       ansi-terminal, 
+                       process
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities

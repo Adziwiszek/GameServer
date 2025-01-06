@@ -72,7 +72,7 @@ runConn (sock, _) chan msgNum gs players = do
   sendStr hdl "Hi, what is your name?" playerID
   name <- fmap init (receiveMessage hdl <&> content)
   putStrLn $ "client name: " ++ name
-  broadcast ("--> " ++ name ++ " entered chat.") "msg" Normal
+  broadcast ("--> " ++ name ++ " entered chat.") Text Normal
   sendStr hdl ("Welcome, " ++ name ++ "!") playerID
 
   commLine <- dupChan chan
@@ -87,7 +87,8 @@ runConn (sock, _) chan msgNum gs players = do
         when (msgNum /= senderID newMsg) $ sendStr hdl (content newMsg) (senderID newMsg)
         loop
       All -> do
-        sendStr hdl (content newMsg) (senderID newMsg) 
+        sendMessage hdl $ putInMsg (content newMsg) (messageType newMsg) All
+        --sendStr hdl (content newMsg) (senderID newMsg) 
         loop
       Server -> loop
 
@@ -102,7 +103,7 @@ runConn (sock, _) chan msgNum gs players = do
         sendStr hdl "Bye!" playerID
         putStrLn $ "user " ++ name ++ " is quiting.."
       ':' : "start" -> do
-        broadcast "Starting the game..." "msg" All
+        broadcast "Starting the game..." Text All
         modifyMVar_ gs (\_ -> return True)
         _players <- readMVar players 
         _ <- forkIO $ runGame chan _players
@@ -113,11 +114,11 @@ runConn (sock, _) chan msgNum gs players = do
       _ -> do
         currentGS <- readMVar gs
         if currentGS then
-          broadcast line "msg" Server 
+          broadcast line Text Server 
         else
-          broadcast (name ++ ": " ++ line) "msg" Normal
+          broadcast (name ++ ": " ++ line) Text Normal
         loop
 
   killThread reader                      
-  broadcast ("<-- " ++ name ++ " left.") "msg" Normal
+  broadcast ("<-- " ++ name ++ " left.") Text Normal
   hClose hdl                             

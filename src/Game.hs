@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts, FlexibleInstances, FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Game (runGame) where 
+module Game (runGame, Board) where 
 
 import System.IO
 import Network.Socket
@@ -13,6 +13,10 @@ import Message
 class Monad m => TwoPlayerGame m s a b | m -> s a b where
   moveA :: s -> m a
   moveB :: s -> m b
+
+class Monad m => TurnBasedGame m s x | m -> s x where
+  -- takes state and playerID
+  takePlayersMove :: s -> Int -> m x
 
 data Score = AWins | Draw | BWins deriving (Eq, Ord)
 instance Show Score where
@@ -105,18 +109,18 @@ makeLose :: Player -> Score
 makeLose PlayerA = BWins
 makeLose PlayerB = AWins
 
-game :: TwoPlayerGame m Board AMove BMove => m Score
+game :: TwoPlayerGame m Board AMove BMove => m (Score, Board)
 game = play emptyBoard PlayerA 
   where 
     play board currentPlayer = do
       move <- case currentPlayer of { PlayerA -> moveA board; PlayerB -> moveB board }
 
       case makeMove board move currentPlayer of
-        Nothing -> return $ makeLose currentPlayer -- move is illegal
+        Nothing -> return (makeLose currentPlayer, board)
         Just newBoard -> 
           case checkScore newBoard of
             Nothing -> play newBoard (switchPlayer currentPlayer)
-            Just s -> return s
+            Just s -> return (s, newBoard)
 
 {-newtype IOGame s a b x = IOGame { runIOGame :: IO x }
   deriving (Functor, Applicative, Monad)
@@ -150,27 +154,34 @@ instance Monad (NetworkGame s a b) where
 
 instance (Show s, Read a, Read b) => TwoPlayerGame (NetworkGame s a b) s a b where
   moveA board = NetworkGame $ \chan players -> do
-    _broadcast chan ("Player A's turn. Current board: " ++ show board) "msg" All 0
+    _broadcast chan ("Player A's turn. Current board: " ++ show board) GameState All 0
     putStrLn "Waiting for Player A's move..."
     msg <- fix $ \loop -> do
       testMsg <- readChan chan 
       if senderID testMsg == 0 then
         return testMsg
       else do
-        _broadcast chan "Move from wrong player!" "msg" All 0
+        _broadcast chan "Move from wrong player!" Text All 0
         loop
-    putStrLn $ "player A move: " ++ show (content msg)
+    --putStrLn $ "player A move: " ++ show (content msg)
     return (read (content msg))
 
   moveB board = NetworkGame $ \chan players -> do
-    _broadcast chan ("Player B's turn. Current board: " ++ show board) "msg" All 0
+    _broadcast chan ("Player B's turn. Current board: " ++ show board) GameState All 0
     putStrLn "Waiting for Player B's move..."
-    msg <- readChan chan
+    msg <- fix $ \loop -> do
+      testMsg <- readChan chan 
+      if senderID testMsg == 1 then
+        return testMsg
+      else do
+        _broadcast chan "Move from wrong player!" Text All 0
+        loop
     return (read (content msg))
 
 runGame :: Chan Message -> Players -> IO ()
 runGame chan players = do
-  let game' :: NetworkGame Board AMove BMove Score
+  let game' :: NetworkGame Board AMove BMove (Score, Board)
       game' = game
-  result <- runNetworkGame game' chan players
-  putStrLn $ "Wynik gry: " ++ show result
+  (result, finalBoard) <- runNetworkGame game' chan players
+  _broadcast chan ("Current board: " ++ show finalBoard) GameState All 0
+  _broadcast chan ("Wynik gry: " ++ show result) Text All 0

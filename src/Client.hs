@@ -6,6 +6,8 @@ import Control.Exception (bracket, try, handle, SomeException(..))
 import Control.Monad.Fix (fix)
 import Control.Concurrent
 import System.Timeout
+import System.Console.ANSI (clearScreen)
+import System.Process (callCommand)
 
 import Message
 
@@ -55,8 +57,15 @@ handleConnection (_, hdl) playerID = do
         putStrLn $ content msg
         writeChan messageChan "DISCONNECT"
       _ -> do 
-        putStrLn $ content msg
-        loop
+        case messageType msg of 
+          GameState -> do
+            --clearScreen
+            callCommand "clear"
+            putStrLn $ content msg
+            loop
+          _ -> do
+            putStrLn $ content msg
+            loop
 
   handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
     msg <- getLine

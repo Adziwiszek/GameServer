@@ -22,7 +22,7 @@ data MessageTarget
   deriving (Generic, Show) 
 
 data Message = Message {
-  messageType :: String,
+  messageType :: MessageType,
   messageTarget :: MessageTarget,
   content :: String,
   senderID :: Int
@@ -32,7 +32,7 @@ instance Binary MessageTarget
 instance Binary MessageType
 instance Binary Message 
 
-_broadcast :: Chan Message -> String -> String -> MessageTarget -> Int -> IO ()
+_broadcast :: Chan Message -> String -> MessageType -> MessageTarget -> Int -> IO ()
 _broadcast chan msg typ targ sID = writeChan chan $ Message {
     messageType=typ,
     messageTarget=targ,
@@ -68,12 +68,12 @@ receiveMessage hdl = do
   return $ decode msgBS 
 
 smsg :: String -> Int -> Message
-smsg str id = Message {
-  messageType = "msg",
+smsg str mId = Message {
+  messageType = Text,
   content = str,
-  senderID = id,
+  senderID = mId,
   messageTarget = All
 }
 
 sendStr :: Handle -> String -> Int -> IO ()
-sendStr hdl str id = sendMessage hdl $ smsg str id
+sendStr hdl str mId = sendMessage hdl $ smsg str mId
