@@ -5,8 +5,6 @@ module Message (module Message) where
 import GHC.Generics (Generic)
 import qualified Data.ByteString.Lazy as BSL
 import Control.Concurrent
-import Control.Monad.Fix (fix)
-import Control.Monad (unless)
 import Data.Binary
 import Data.Int
 import System.IO

@@ -13,9 +13,6 @@ import qualified Data.Map as Map
 import Message
 import Game(runGame)
 
-type Msg = (Int, String)
-type RoomName = String
-
 type GameStarted = MVar Bool
 type Players = MVar [(Int, Chan Message, Handle)]
 type Turn = MVar Int
@@ -23,24 +20,16 @@ type Turn = MVar Int
   
 {--
  TODO
- - refactoring
- - wysyłanie wyniku do graczy i powrót do lobby
- - wysyłanie z serwera stanu gry i rysowanie po stronie klienta
- - używanie messageType do obsługi typu wiadomości, dla ruch gracza, polecenia dla/od serwera itp
- - osobny kanał na wiadomości i na ruchy graczy
- - wysyłanie po wejściu do gracza jego ID (poprzez polecenie od serwera)
- - walidacja czy ruch gracza jest tym, którego oczekujemy (żeby ten sam graczn nie robił ciągle ruchów)
+ - change it back so every user thread send messages out instead of one sender to all users
+ - instead of every player having channel for input have one channel for input
 --}
 
-sendOut :: Message -> [(Int, Handle)] -> IO ()
-sendOut msg players = do
+sendOutMsg :: Handle -> Message -> Int -> IO ()
+sendOutMsg hdl msg playerID = do
   case messageTarget msg of
-    All -> mapM_ ((`sendMessage` msg) . snd) players
-    Normal -> mapM_ ((`sendMessage` msg) . snd) $ filter (\(hId, _) -> hId /= senderID msg) players
-    ToPlayer targetID -> 
-      case lookup targetID players of
-        Nothing -> putStrLn $ "Can't find player with id = " ++ show targetID
-        Just hdl -> sendMessage hdl msg
+    All -> sendMessage hdl msg
+    Normal -> unless (playerID == senderID msg) $ sendMessage hdl msg
+    ToPlayer targetID -> when (playerID == targetID) $ sendMessage hdl msg
     Server -> return ()
 
 startServer :: IO ()
@@ -55,11 +44,11 @@ startServer = do
   listen sock 2
   chan <- newChan
 
-  _ <- forkIO $ fix $ \loop -> do
+  {-_ <- forkIO $ fix $ \loop -> do
     msg <- readChan chan
     _players <- readMVar players
-    sendOut msg $ map (\(pId, _, hdl) -> (pId, hdl)) _players
-    loop
+    sendOutAll msg $ map (\(pId, _, hdl) -> (pId, hdl)) _players
+    loop-}
 
   putStrLn "Running server on localhost, port = 4242"
   mainLoop sock chan 0 gameStarted players turn
@@ -95,9 +84,8 @@ runConn (sock, _) chan msgNum gs players turn = do
   -- ten wątek jest odpowiedzialny za czytanie wiadomości z kanału 
   -- i przesyłanie ich do klienta (jeśli wiadomość nie pochodzi od niego)
   reader <- forkIO $ fix $ \loop -> do
-    {-msg <- readChan commLine
-    _players <- readMVar players
-    sendOut msg _players-}
+    msg <- readChan commLine
+    sendOutMsg hdl msg playerID
     loop
 
   -- handle odpowiada za odczytywanie wiadomości od użytkownika i broadcastowanie
