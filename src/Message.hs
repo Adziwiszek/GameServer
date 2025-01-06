@@ -19,6 +19,7 @@ data MessageTarget
   = All
   | Normal -- don't send ones message to themselves
   | Server -- don't send to players 
+  | ToPlayer Int -- send to a specific player
   deriving (Generic, Show) 
 
 data Message = Message {
@@ -39,6 +40,11 @@ _broadcast chan msg typ targ sID = writeChan chan $ Message {
     content=msg,
     senderID=sID
   }
+
+sendToPlayer :: Chan Message -> Int -> String -> IO ()
+sendToPlayer chan playerID msgContent = do
+  let msg = Message {messageType=Text, messageTarget=ToPlayer playerID, content=msgContent, senderID= -1}
+  writeChan chan msg
 
 sendMessage :: Handle -> Message -> IO ()
 sendMessage hdl msg = do

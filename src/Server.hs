@@ -19,7 +19,7 @@ type RoomName = String
 type RoomMap = MVar (Map.Map RoomName (Chan Msg)) 
 
 type GameStarted = MVar Bool
-type Players = MVar [Handle]
+type Players = MVar [(Int, Handle)]
 
   
 {--
@@ -32,6 +32,17 @@ type Players = MVar [Handle]
  - wysyłanie po wejściu do gracza jego ID (poprzez polecenie od serwera)
  - walidacja czy ruch gracza jest tym, którego oczekujemy (żeby ten sam graczn nie robił ciągle ruchów)
 --}
+
+sendOut :: Message -> [(Int, Handle)] -> IO ()
+sendOut msg players = do
+  case messageTarget msg of
+    All -> mapM_ ((`sendMessage` msg) . snd) players
+    Normal -> mapM_ ((`sendMessage` msg) . snd) $ filter (\(hId, _) -> hId /= senderID msg) players
+    ToPlayer targetID -> 
+      case lookup targetID players of
+        Nothing -> putStrLn $ "Can't find player with id = " ++ show targetID
+        Just hdl -> sendMessage hdl msg
+    Server -> return ()
 
 startServer :: IO ()
 startServer = do
@@ -56,69 +67,65 @@ mainLoop sock chan msgNum gs players = do
   _ <- forkIO (runConn conn chan msgNum gs players)
   mainLoop sock chan (msgNum + 1) gs players
 
+{- TODO
+ - 1) create channels for input and for output
+ - -}
 
 runConn :: (Socket, SockAddr) -> Chan Message -> Int -> GameStarted -> Players -> IO ()
 runConn (sock, _) chan msgNum gs players = do
   let playerID = msgNum
 
-  let putInMsg con typ target = Message { messageTarget=target, messageType=typ, content=con, senderID = playerID }
-  let broadcast msg typ targ = writeChan chan $ putInMsg msg typ targ
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
   -- adding this players handle to the players list
-  modifyMVar_ players $ \pl -> return $ hdl : pl
+  modifyMVar_ players $ \pl -> return $ (playerID, hdl) : pl
   sendStr hdl "INIT_ID" playerID
 
   sendStr hdl "Hi, what is your name?" playerID
   name <- fmap init (receiveMessage hdl <&> content)
   putStrLn $ "client name: " ++ name
-  broadcast ("--> " ++ name ++ " entered chat.") Text Normal
+  writeChan chan $ Message Text Normal ("--> " ++ name ++ " entered chat.") (-1) 
   sendStr hdl ("Welcome, " ++ name ++ "!") playerID
 
   commLine <- dupChan chan
+  inChan <- newChan
 
   -- fork off a thread for reading from the duplicated channel
   -- ten wątek jest odpowiedzialny za czytanie wiadomości z kanału 
   -- i przesyłanie ich do klienta (jeśli wiadomość nie pochodzi od niego)
   reader <- forkIO $ fix $ \loop -> do
-    newMsg <- readChan commLine
-    case messageTarget newMsg of
-      Normal -> do
-        when (msgNum /= senderID newMsg) $ sendStr hdl (content newMsg) (senderID newMsg)
-        loop
-      All -> do
-        sendMessage hdl $ putInMsg (content newMsg) (messageType newMsg) All
-        --sendStr hdl (content newMsg) (senderID newMsg) 
-        loop
-      Server -> loop
+    msg <- readChan commLine
+    _players <- readMVar players
+    sendOut msg _players
+    loop
 
   -- handle odpowiada za odczytywanie wiadomości od użytkownika i broadcastowanie
   -- ich do reszty użytkowników
   handle (\(SomeException e) -> putStrLn $ "Server error: " ++ show e) $ fix $ \loop -> do
     msg <- receiveMessage hdl
-    putStrLn $ "Message from player with ID = " ++ show (senderID msg)
     let line = init (content msg)
     case line of
       "quit" -> do
         sendStr hdl "Bye!" playerID
         putStrLn $ "user " ++ name ++ " is quiting.."
       ':' : "start" -> do
-        broadcast "Starting the game..." Text All
+        writeChan commLine $ Message Text All "Starting the game..." (-1)
         modifyMVar_ gs (\_ -> return True)
         _players <- readMVar players 
-        _ <- forkIO $ runGame chan _players
+        _ <- forkIO $ runGame inChan chan $ map snd _players
         loop
       ':' : rest -> do
         putStrLn $ "command used: " ++ rest
         loop
       _ -> do
         currentGS <- readMVar gs
-        if currentGS then
-          broadcast line Text Server 
+        if currentGS then do
+          --putStrLn $ "Player with Id = " ++ show playerID ++ " made a move = " ++ line
+          writeChan inChan $ Message Text Server line (senderID msg)
         else
-          broadcast (name ++ ": " ++ line) Text Normal
+          writeChan inChan $ Message Text Normal (name ++ ": " ++ line) (senderID msg)
         loop
 
   killThread reader                      
-  broadcast ("<-- " ++ name ++ " left.") Text Normal
+  writeChan chan $ Message Text Normal ("<-- " ++ name ++ " left.") (-1)
   hClose hdl                             
