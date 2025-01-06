@@ -9,19 +9,16 @@ import System.Timeout
 
 import Message
 
-{-
- -
- -
- - -}
+type PlayerID = MVar Int
 
 startClient :: IO ()
 startClient = do
     let host = "127.0.0.1"
     let port = "4242"
     putStrLn "Attempting to connect..."
-    
+    playerID <- newEmptyMVar
     -- Use bracket to ensure proper cleanup
-    bracket (connect' host port) cleanup handleConnection
+    bracket (connect' host port) cleanup (flip handleConnection playerID)
     where
         connect' host port = do
             addr <- resolve host port
@@ -38,23 +35,33 @@ startClient = do
             hClose hdl
             close sock
 
-handleConnection :: (Socket, Handle) -> IO ()
-handleConnection (_, hdl) = do
+handleConnection :: (Socket, Handle) -> PlayerID -> IO ()
+handleConnection (_, hdl) playerID = do
   -- channel for passing messages between threads
   messageChan <- newChan
 
   readerThread <- forkIO $ fix $ \loop -> do
     msg <- receiveMessage hdl
-    let msgContent = content msg
-    putStrLn msgContent
-    case msgContent of
+    case content msg of
+      "INIT_ID" -> do
+        wasINIT <- isEmptyMVar playerID
+        if wasINIT then do
+          putMVar playerID $ senderID msg
+          putStrLn $ "your id = " ++ show (senderID msg)
+          loop
+        else loop
       -- when we get Bye message we signal main thread to finish
-      "Bye!" -> writeChan messageChan "DISCONNECT"
-      _ -> loop
+      "Bye!" -> do
+        putStrLn $ content msg
+        writeChan messageChan "DISCONNECT"
+      _ -> do 
+        putStrLn $ content msg
+        loop
 
   handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
     msg <- getLine
-    sendStr hdl (msg ++ " ") 0
+    myID <- readMVar playerID
+    sendStr hdl (msg ++ " ") myID 
     case msg of
       "quit" -> do
         result <- timeout 500000 $ readChan messageChan

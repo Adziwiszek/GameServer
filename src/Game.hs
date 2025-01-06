@@ -3,6 +3,8 @@
 
 module Game (runGame) where 
 
+import System.IO
+import Network.Socket
 import Control.Monad
 import Control.Concurrent
 import Message
@@ -16,8 +18,6 @@ instance Show Score where
   show AWins = "A wygrywa!"
   show BWins = "B wygrywa!"
   show Draw = "Remis!"
-
-data Symbol = A | B | Empty
 
 data Player = PlayerA | PlayerB deriving Eq
 instance Show Player where
@@ -117,11 +117,7 @@ game = play emptyBoard PlayerA
             Nothing -> play newBoard (switchPlayer currentPlayer)
             Just s -> return s
 
-data GameState 
-  = Lobby
-  | Playing
-
-newtype IOGame s a b x = IOGame { runIOGame :: IO x }
+{-newtype IOGame s a b x = IOGame { runIOGame :: IO x }
   deriving (Functor, Applicative, Monad)
 
 instance (Show s, Read a, Read b) => TwoPlayerGame (IOGame s a b) s a b where
@@ -134,40 +130,43 @@ instance (Show s, Read a, Read b) => TwoPlayerGame (IOGame s a b) s a b where
   moveB board = IOGame $ do
     putStrLn $ "Aktualny stan planszy: " ++ show board
     putStrLn "Podaj ruch gracza B (liczba oznaczająca pole):"
-    readLn 
+    readLn -}
 
-newtype NetworkGame s a b x = NetworkGame { runNetworkGame :: Chan Message -> IO x }
+type Players = [Handle]
+newtype NetworkGame s a b x = NetworkGame { runNetworkGame :: Chan Message -> Players -> IO x }
 
 instance Functor (NetworkGame s a b) where
-  fmap f (NetworkGame io) = NetworkGame $ \chan -> fmap f (io chan)
+  fmap f (NetworkGame io) = NetworkGame $ \chan players -> fmap f (io chan players)
 
 instance Applicative (NetworkGame s a b) where
-  pure x = NetworkGame $ \_ -> pure x
-  NetworkGame f <*> NetworkGame x = NetworkGame $ \chan -> f chan <*> x chan
+  pure x = NetworkGame $ \_ _ -> pure x
+  NetworkGame f <*> NetworkGame x = NetworkGame $ \chan players -> f chan players <*> x chan players
 
 instance Monad (NetworkGame s a b) where
-  NetworkGame x >>= f = NetworkGame $ \chan -> do
-    result <- x chan 
-    runNetworkGame (f result) chan
+  NetworkGame x >>= f = NetworkGame $ \chan players -> do
+    result <- x chan players
+    runNetworkGame (f result) chan players
 
 instance (Show s, Read a, Read b) => TwoPlayerGame (NetworkGame s a b) s a b where
-  moveA board = NetworkGame $ \chan -> do
+  moveA board = NetworkGame $ \chan players -> do
     _broadcast chan ("Player A's turn. Current board: " ++ show board) "msg" All 0
     putStrLn "Waiting for Player A's move..."
+    let playerA = players !! 0
+
     msg <- readChan chan
     putStrLn "dupa"
     putStrLn $ "player A move: " ++ show (content msg)
     return (read (content msg))
 
-  moveB board = NetworkGame $ \chan -> do
+  moveB board = NetworkGame $ \chan players -> do
     _broadcast chan ("Player B's turn. Current board: " ++ show board) "msg" All 0
     putStrLn "Waiting for Player B's move..."
     msg <- readChan chan
     return (read (content msg))
 
-runGame :: Chan Message -> IO ()
-runGame chan = do
+runGame :: Chan Message -> Players -> IO ()
+runGame chan players = do
   let game' :: NetworkGame Board AMove BMove Score
       game' = game
-  result <- runNetworkGame game' chan 
+  result <- runNetworkGame game' chan players
   putStrLn $ "Wynik gry: " ++ show result
