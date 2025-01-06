@@ -6,6 +6,7 @@ module Game (runGame) where
 import System.IO
 import Network.Socket
 import Control.Monad
+import Control.Monad.Fix (fix)
 import Control.Concurrent
 import Message
 
@@ -151,10 +152,13 @@ instance (Show s, Read a, Read b) => TwoPlayerGame (NetworkGame s a b) s a b whe
   moveA board = NetworkGame $ \chan players -> do
     _broadcast chan ("Player A's turn. Current board: " ++ show board) "msg" All 0
     putStrLn "Waiting for Player A's move..."
-    let playerA = players !! 0
-
-    msg <- readChan chan
-    putStrLn "dupa"
+    msg <- fix $ \loop -> do
+      testMsg <- readChan chan 
+      if senderID testMsg == 0 then
+        return testMsg
+      else do
+        _broadcast chan "Move from wrong player!" "msg" All 0
+        loop
     putStrLn $ "player A move: " ++ show (content msg)
     return (read (content msg))
 

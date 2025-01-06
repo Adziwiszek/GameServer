@@ -110,10 +110,11 @@ runConn (sock, _) chan msgNum gs players = do
       ':' : rest -> do
         putStrLn $ "command used: " ++ rest
         loop
-      _      -> do
+      _ -> do
         currentGS <- readMVar gs
         if currentGS then
-          broadcast line "msg" Server else
+          broadcast line "msg" Server 
+        else
           broadcast (name ++ ": " ++ line) "msg" Normal
         loop
 
