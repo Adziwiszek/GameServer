@@ -4,11 +4,11 @@ import Network.Socket
 import System.IO
 import Control.Exception
 import Control.Concurrent
-import Control.Monad (when)
+-- import Control.Monad (when)
 import Control.Monad.State
-import Control.Monad.Fix (fix)
+-- import Control.Monad.Fix (fix)
 import Data.Functor
-import qualified Data.Map as Map
+-- import qualified Data.Map as Map
 
 import Message
 import Game(runGame)
@@ -61,6 +61,7 @@ mainLoop sock chan msgNum gs players turn = do
   _ <- forkIO (runConn conn chan msgNum gs players turn)
   mainLoop sock chan (msgNum + 1) gs players turn
 
+
 runConn :: (Socket, SockAddr) -> Chan Message -> Int -> GameStarted -> Players -> Turn -> IO ()
 runConn (sock, _) chan msgNum gs players turn = do
   let playerID = msgNum
@@ -74,9 +75,9 @@ runConn (sock, _) chan msgNum gs players turn = do
   sendStr hdl "INIT_ID" playerID
 
   sendStr hdl "Hi, what is your name?" playerID
-  name <- fmap init (receiveMessage hdl <&> content)
+  name <- fmap init (receiveMessage hdl <&> flip unpackStringMessage "default_name")
   putStrLn $ "client name: " ++ name ++ ", client ID = " ++ show playerID  
-  writeChan chan $ Message Text Normal ("--> " ++ name ++ " entered chat.") playerID
+  writeChan chan $ Message Normal (Text ("--> " ++ name ++ " entered chat.")) playerID
   sendStr hdl ("Welcome, " ++ name ++ "!") playerID
 
 
@@ -92,7 +93,7 @@ runConn (sock, _) chan msgNum gs players turn = do
   -- ich do reszty użytkowników
   handle (\(SomeException e) -> putStrLn $ "Server error: " ++ show e) $ fix $ \loop -> do
     msg <- receiveMessage hdl
-    let line = init (content msg)
+    let line = init (unpackStringMessage msg "ERR")
     case line of
       "quit" -> do
         sendStr hdl "Bye!" playerID
@@ -110,11 +111,11 @@ runConn (sock, _) chan msgNum gs players turn = do
         currentGS <- readMVar gs
         if currentGS then do
           currentTurn <- readMVar turn
-          when (currentTurn == playerID) $ writeChan inChan $ Message Text Server line playerID
+          when (currentTurn == playerID) $ writeChan inChan $ Message Server (Text line) playerID
         else
-          writeChan commLine $ Message Text Normal (name ++ ": " ++ line) (senderID msg)
+          writeChan commLine $ Message Normal (Text (name ++ ": " ++ line)) (senderID msg)
         loop
 
   killThread reader                      
-  writeChan chan $ Message Text Normal ("<-- " ++ name ++ " left.") playerID
+  writeChan chan $ Message Normal (Text ("<-- " ++ name ++ " left.")) playerID
   hClose hdl                             

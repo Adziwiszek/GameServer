@@ -2,11 +2,11 @@ module Client (startClient) where
 
 import Network.Socket
 import System.IO
-import Control.Exception (bracket, try, handle, SomeException(..))
+import Control.Exception (bracket, handle, SomeException(..))
 import Control.Monad.Fix (fix)
 import Control.Concurrent
 import System.Timeout
-import System.Console.ANSI (clearScreen)
+-- import System.Console.ANSI (clearScreen)
 import System.Process (callCommand)
 
 import Message
@@ -45,7 +45,7 @@ handleConnection (_, hdl) playerID = do
   readerThread <- forkIO $ fix $ \loop -> do
     msg <- receiveMessage hdl
     case content msg of
-      "INIT_ID" -> do
+      Text "INIT_ID" -> do
         wasINIT <- isEmptyMVar playerID
         if wasINIT then do
           putMVar playerID $ senderID msg
@@ -53,19 +53,18 @@ handleConnection (_, hdl) playerID = do
           loop
         else loop
       -- when we get Bye message we signal main thread to finish
-      "Bye!" -> do
-        putStrLn $ content msg
+      Text "Bye!" -> do
+        putStrLn "Bye!" 
         writeChan messageChan "DISCONNECT"
-      _ -> do 
-        case messageType msg of 
-          GameState -> do
-            --clearScreen
-            callCommand "clear"
-            putStrLn $ content msg
-            loop
-          _ -> do
-            putStrLn $ content msg
-            loop
+      GameState gs -> do
+        --clearScreen
+        callCommand "clear"
+        -- putStrLn $ show gs
+        print gs
+        loop
+      Text s -> do 
+          putStrLn s
+          loop
 
   handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
     msg <- getLine

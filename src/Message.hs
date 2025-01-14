@@ -9,10 +9,34 @@ import Data.Binary
 import Data.Int
 import System.IO
 
-data MessageType
+data Player = PlayerA | PlayerB deriving (Eq, Generic)
+instance Show Player where
+  show PlayerA = "A"
+  show PlayerB = "B"
+instance Binary Player
+
+newtype Board = Board [Maybe Player] deriving Generic
+instance Show Board where
+  show (Board board) = 
+    foldl (\acc (i, x) -> acc ++ " " ++
+      maybe " " show x ++
+      (if i `mod` 3 == 0 || i `mod` 3 == 1 
+        then " |" 
+        else 
+        if i < 8 then " \n-----------\n"
+        else "\n")) -- end of line 
+    "\n\n" $ zip [0..] board
+instance Binary Board
+
+{-data MessageType
   = Text
   | GameState
   | PlayerMove
+  deriving (Generic, Show) -}
+
+data MessageContent
+  = Text String
+  | GameState Board
   deriving (Generic, Show)
 
 data MessageTarget 
@@ -23,27 +47,25 @@ data MessageTarget
   deriving (Generic, Show) 
 
 data Message = Message {
-  messageType :: MessageType,
   messageTarget :: MessageTarget,
-  content :: String,
+  content :: MessageContent,
   senderID :: Int
 } deriving (Generic, Show)
 
 instance Binary MessageTarget
-instance Binary MessageType
+instance Binary MessageContent
 instance Binary Message 
 
-_broadcast :: Chan Message -> String -> MessageType -> MessageTarget -> Int -> IO ()
-_broadcast chan msg typ targ sID = writeChan chan $ Message {
-    messageType=typ,
+_broadcast :: Chan Message -> MessageContent -> MessageTarget -> Int -> IO ()
+_broadcast chan msg targ sID = writeChan chan $ Message {
     messageTarget=targ,
     content=msg,
     senderID=sID
   }
 
-sendToPlayer :: Chan Message -> Int -> String -> IO ()
+sendToPlayer :: Chan Message -> Int -> MessageContent -> IO ()
 sendToPlayer chan playerID msgContent = do
-  let msg = Message {messageType=Text, messageTarget=ToPlayer playerID, content=msgContent, senderID= -1}
+  let msg = Message {messageTarget=ToPlayer playerID, content=msgContent, senderID= -1}
   writeChan chan msg
 
 sendMessage :: Handle -> Message -> IO ()
@@ -75,11 +97,15 @@ receiveMessage hdl = do
 
 smsg :: String -> Int -> Message
 smsg str mId = Message {
-  messageType = Text,
-  content = str,
+  content = Text str,
   senderID = mId,
   messageTarget = All
 }
 
 sendStr :: Handle -> String -> Int -> IO ()
 sendStr hdl str mId = sendMessage hdl $ smsg str mId
+
+unpackStringMessage :: Message -> String -> String 
+unpackStringMessage msg def = process $ content msg where
+  process (GameState _) = def
+  process (Text s)      = s

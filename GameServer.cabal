@@ -31,7 +31,8 @@ executable GameServer
                        mtl,
                        binary,
                        ansi-terminal, 
-                       process
+                       process,
+                       MonadRandom
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities

@@ -1,22 +1,16 @@
 {-# LANGUAGE FlexibleContexts, FlexibleInstances, FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Game (runGame, Board) where 
+module Game (runGame, Board, movePlayer) where 
 
 import System.IO
-import Network.Socket
-import Control.Monad
 import Control.Monad.Fix (fix)
 import Control.Concurrent
 import Message
 
-class Monad m => TwoPlayerGame m s a b | m -> s a b where
-  moveA :: s -> m a
-  moveB :: s -> m b
-
-class Monad m => TurnBasedGame m s x | m -> s x where
-  -- takes state and playerID
-  takePlayersMove :: s -> Int -> m x
+class Monad m => TwoPlayerGame m a b | m -> a b where
+  moveA :: Board -> m a
+  moveB :: Board -> m b
 
 data Score = AWins | Draw | BWins deriving (Eq, Ord)
 instance Show Score where
@@ -24,22 +18,6 @@ instance Show Score where
   show BWins = "B wygrywa!"
   show Draw = "Remis!"
 
-data Player = PlayerA | PlayerB deriving Eq
-instance Show Player where
-  show PlayerA = "A"
-  show PlayerB = "B"
-
-newtype Board = Board [Maybe Player]
-instance Show Board where
-  show (Board board) = 
-    foldl (\acc (i, x) -> acc ++ " " ++
-      maybe " " show x ++
-      (if i `mod` 3 == 0 || i `mod` 3 == 1 
-        then " |" 
-        else 
-        if i < 8 then " \n-----------\n"
-        else "\n")) -- end of line 
-    "\n\n" $ zip [0..] board
 
 type AMove = Int
 type BMove = Int
@@ -109,7 +87,7 @@ makeLose :: Player -> Score
 makeLose PlayerA = BWins
 makeLose PlayerB = AWins
 
-game :: TwoPlayerGame m Board AMove BMove => m (Score, Board)
+game :: TwoPlayerGame m AMove BMove => m (Score, Board)
 game = play emptyBoard PlayerA 
   where 
     play board currentPlayer = do
@@ -141,17 +119,17 @@ type InChan = Chan Message
 type OutChan = Chan Message
 type Players = [(Int, Chan Message, Handle)]
 type Turn = MVar Int
-newtype NetworkGame s a b x = NetworkGame { runNetworkGame :: OutChan -> Players -> Turn -> IO x }
+newtype NetworkGame a b x = NetworkGame { runNetworkGame :: OutChan -> Players -> Turn -> IO x }
 
-instance Functor (NetworkGame s a b) where
+instance Functor (NetworkGame a b) where
   fmap f (NetworkGame io) = NetworkGame $ \outchan players turn -> fmap f (io outchan players turn)
 
-instance Applicative (NetworkGame s a b) where
+instance Applicative (NetworkGame a b) where
   pure x = NetworkGame $ \_ _ _ -> pure x
   NetworkGame f <*> NetworkGame x = NetworkGame $ \outchan players turn 
     -> f outchan players turn <*> x outchan players turn
 
-instance Monad (NetworkGame s a b) where
+instance Monad (NetworkGame a b) where
   NetworkGame x >>= f = NetworkGame $ \outchan players turn -> do
     result <- x outchan players turn
     runNetworkGame (f result) outchan players turn
@@ -165,26 +143,26 @@ movePlayer board player = NetworkGame $ \outchan players turn -> do
           Nothing -> error $ "No channel for player with ID = " ++ show pID
           Just chan -> chan
 
-    _broadcast outchan ("Turn of " ++ show player ++" Current board: " ++ show board) GameState All (-1)
-    sendToPlayer outchan pID "Your turn"    
+    _broadcast outchan (Text $ "Turn of " ++ show player ++" Current board: " ++ show board)  All (-1)
+    sendToPlayer outchan pID $ Text "Your turn"    
 
     msg <- fix $ \loop -> do
       testMsg <- readChan inchan 
       if senderID testMsg == pID then
         return testMsg
       else do
-        _broadcast outchan "Move from wrong player!" Text All 0
+        _broadcast outchan (Text "Move from wrong player!") All 0
         loop
-    return (read (content msg))
+    return (read (unpackStringMessage msg "dupa"))
 
-instance (Show s, Read a, Read b) => TwoPlayerGame (NetworkGame s a b) s a b where
+instance (Read a, Read b) => TwoPlayerGame (NetworkGame a b) a b where
   moveA board = movePlayer board PlayerA
   moveB board = movePlayer board PlayerB
 
 runGame :: OutChan -> Players -> Turn -> IO ()
 runGame outchan players turn = do
-  let game' :: NetworkGame Board AMove BMove (Score, Board)
+  let game' :: NetworkGame AMove BMove (Score, Board)
       game' = game
   (result, finalBoard) <- runNetworkGame game' outchan players turn
-  _broadcast outchan ("Current board: " ++ show finalBoard) GameState All 0
-  _broadcast outchan ("Wynik gry: " ++ show result) Text All 0
+  _broadcast outchan (Text $ "Current board: " ++ show finalBoard) All 0
+  _broadcast outchan (Text $ "Wynik gry: " ++ show result) All 0
