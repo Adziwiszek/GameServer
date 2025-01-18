@@ -4,11 +4,13 @@ import System.Environment
 
 import Client
 import Server
+import Uno
 
 data AppType 
   = Server
   | Client
   | Tooltip
+  | Uno
 
 parse :: [String] -> IO AppType
 parse ["-h"] = do
@@ -20,6 +22,9 @@ parse ["server"] = do
 parse ["client"] = do 
   putStrLn "Starting client..."
   return Client
+parse ["testuno"] = do 
+  putStrLn "testing uno..."
+  return Uno
 parse _ = do
   putStrLn "Not supported."
   return Tooltip
@@ -30,6 +35,7 @@ main = do
   case appType of 
     Server -> startServer
     Client -> startClient
+    Uno     -> runGame
     Tooltip -> return ()
     -- _ -> putStrLn "not implemeted"
   

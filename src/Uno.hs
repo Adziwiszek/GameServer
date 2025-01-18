@@ -1,12 +1,14 @@
 {-# LANGUAGE FlexibleContexts, FlexibleInstances, FunctionalDependencies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+-- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
+-- {-# LANGUAGE InstanceSigs #-}
 
-module Uno ( ) where 
+module Uno where 
 
 import GHC.Generics (Generic)
 import Data.List (find)
-import Control.Monad
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Control.Monad.Cont
 import Control.Monad.Random
 import Control.Monad.State
@@ -22,18 +24,18 @@ data CardColor
 data CardRole
   = Number Int
   | Add Int
-  | Skip
-  | Switch
+  -- | Skip
+  -- | Switch
   deriving (Eq, Show)
 
 newtype Card = Card (CardRole, CardColor) deriving (Eq, Show)
 
-data Direction = DLeft | DRight
+data Direction = DLeft | DRight deriving Show
 
-newtype Score = Score Player
+newtype Score = Score Player deriving Show
 
 class Monad m => UnoGame m  where
-  getPlayerMove :: Int -> m [Card]
+  getPlayerMove :: Int -> Board -> m [Card]
 
 class MonadState Board m => UnoState m where
   getCurrentPlayer_ :: m Player
@@ -53,6 +55,19 @@ data Board = Board {
   drawPile       :: [Card],
   direction      :: Direction
 }
+
+instance Show Board where
+    show board = 
+        let playerStr = 
+                foldl 
+                    (\acc (Player {playerID=pid, hand=cs}) -> 
+                        acc ++ "\nID = " ++ show pid ++ ", hand = " ++ show cs)
+                    ""
+                    (let (Players (l, r)) = boardPlayers board in l ++ r)
+        in playerStr ++ "\nDraw pile = " ++ (show $ drawPile board) ++ "\nDiscard pile = " ++ (show $ discardPile board)
+
+startingDeckSize :: Int 
+startingDeckSize = 3
 
 member :: Eq a => a -> [a] -> Bool
 member _ [] = False
@@ -86,7 +101,7 @@ nextPlayer board = case direction board of
 
 generateStartingDeck :: [Card]
 generateStartingDeck = do
-  action <- [Number i | i <- [0..9]] ++ [Add 2, Skip, Switch]
+  action <- [Number i | i <- [0..9]] -- ++ [Add 2, Skip, Switch]
   color <- [Red, Blue, Yellow, Green] 
   return $ Card (action, color)
 
@@ -108,7 +123,7 @@ initBoard (Players (left, right)) = do
   g <- getStdGen 
   let cards = evalRand (shuffle generateStartingDeck) g
   let (finalPlayers, rest) = foldl (\(acc, cardsLeft) (Player {playerID=pid, hand=_}) -> 
-        let (myCards, cardsLeft') = takeOut 7 cardsLeft in 
+        let (myCards, cardsLeft') = takeOut startingDeckSize cardsLeft in 
         (Player {playerID=pid, hand=myCards} : acc, cardsLeft')) 
         ([], cards) allPlayers
   return $ Board {boardPlayers  = Players ([], finalPlayers), 
@@ -157,13 +172,14 @@ executeCardEffect :: MonadIO m => Board -> Card -> m Board
 executeCardEffect b (Card (Add n, _)) = addToCurrentPlayer b n
 executeCardEffect b (Card (Number n, col)) = 
   return $ b {discardPile = Card (Number n, col) : discardPile b}
-executeCardEffect b (Card (Skip, _)) = return b -- add a list to keep track of skipped players
-executeCardEffect b (Card (Switch, _)) = 
+-- executeCardEffect b (Card (Skip, _)) = return b -- add a list to keep track of skipped players
+{- executeCardEffect b (Card (Switch, _)) = 
   return $ b {direction= 
   case direction b of
     DLeft  -> DRight
     DRight -> DLeft
   }
+-}
         
 {- Rules
  - player makes a move (gives list of cards they want to play)
@@ -196,7 +212,7 @@ game players = do
       -- we check if a move is legal
       let currentPlayer = getCurrentPlayer $ boardPlayers board
       let pid = playerID currentPlayer
-      move <- getPlayerMove pid
+      move <- getPlayerMove pid board
       newBoard <- processPlayerMove move board
 
       case newBoard of 
@@ -228,7 +244,7 @@ game players = do
                 in member c cs) 
               move
       if hasCards 
-        then helper move board 
+        then helper move $ nextPlayer board 
         else return Nothing
 
     -- goes through cards, checks if player can place them, and if so
@@ -244,4 +260,58 @@ game players = do
           helper cs b''
         else return Nothing
      
-      
+newtype TerminalUno x = TerminalUno { runTerminalUno :: IO x }
+
+instance Functor TerminalUno where 
+    fmap f (TerminalUno uno) = TerminalUno $ fmap f uno
+
+instance Applicative TerminalUno where
+    pure x = TerminalUno $ pure x
+    TerminalUno f <*> TerminalUno x = TerminalUno $ f <*> x
+
+instance Monad TerminalUno where 
+    TerminalUno x >>= f = TerminalUno $ do
+        result <- x
+        runTerminalUno $ f result 
+
+instance MonadIO TerminalUno where
+    liftIO = TerminalUno
+
+parseMap :: Map String Card
+parseMap = foldl (\acc x -> 
+    case x of 
+        Card (Number n, c) -> Map.insert (show n ++ show c) x acc
+        Card (Add n, c)    -> Map.insert ("add" ++ show n ++ show c) x acc
+    ) Map.empty generateStartingDeck
+    
+instance UnoGame TerminalUno where  
+  getPlayerMove pid b = TerminalUno $ do
+    putStrLn $ "Board :\n" ++ show b
+    putStrLn $ "put your move player " ++ show pid
+    line <- getLine
+    let cards = parseCards line
+    putStrLn $ "your move = " ++ show cards
+    return cards 
+
+    where
+        parseCards strCards = 
+            let cs = words strCards
+            in foldl
+                (\acc x -> case Map.lookup x parseMap of
+                    Just c -> c : acc
+                    Nothing -> acc)
+                []
+                cs
+
+createPlayer :: Int -> Player
+createPlayer pid = Player {playerID=pid, hand=[]}
+
+runGame :: IO ()
+runGame  = do
+    let players = Players ([], [createPlayer 0, createPlayer 1])
+    let game' :: TerminalUno (Score, Board)
+        game' = game players
+    (result, finalBoard) <- runTerminalUno game'
+    putStrLn $ "final board: " ++ show finalBoard
+    putStrLn $ "Score = " ++ show result
+    
