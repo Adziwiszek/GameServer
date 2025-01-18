@@ -158,7 +158,17 @@ addToCurrentPlayer _board n = do
   where
     giveCardsToPlayer player cards = player {hand = cards ++ hand player}
       
-      
+removeCardsFromPlayer :: Board -> [Card] -> Board 
+removeCardsFromPlayer board move = 
+    let (Players (left, p:right)) = boardPlayers board 
+    in let (Player {playerID=pid, hand=cards}) = p
+    in let newHand = foldl 
+            (\acc c -> 
+                if member c move 
+                then acc
+                else c : acc) 
+            [] cards
+    in board {boardPlayers=Players (left, Player {playerID=pid, hand=newHand}:right)}
 
 addToDiscardPile :: Monad m => Board -> Card -> m Board
 addToDiscardPile b c = return $ b {discardPile = c : discardPile b}
@@ -244,7 +254,7 @@ game players = do
                 in member c cs) 
               move
       if hasCards 
-        then helper move $ nextPlayer board 
+        then helper move $ nextPlayer $ removeCardsFromPlayer board move
         else return Nothing
 
     -- goes through cards, checks if player can place them, and if so
