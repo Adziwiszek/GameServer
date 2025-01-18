@@ -38,7 +38,6 @@ class Monad m => UnoGame m  where
 class MonadState Board m => UnoState m where
   getCurrentPlayer_ :: m Player
   updateCurrentPlayer :: Player -> m ()
-  
 
 data Player = Player
   { playerID :: Int
@@ -54,6 +53,10 @@ data Board = Board {
   drawPile       :: [Card],
   direction      :: Direction
 }
+
+member :: Eq a => a -> [a] -> Bool
+member _ [] = False
+member a (x:xs) = a == x || member a xs
 
 takeOut :: Int -> [a] -> ([a], [a])
 takeOut n xs = (take n xs, drop (n + 1) xs)
@@ -86,6 +89,7 @@ generateStartingDeck = do
   action <- [Number i | i <- [0..9]] ++ [Add 2, Skip, Switch]
   color <- [Red, Blue, Yellow, Green] 
   return $ Card (action, color)
+
 
 shuffle :: (RandomGen g) => [a] -> Rand g [a]
 shuffle [] = return []
@@ -122,6 +126,7 @@ reshuffleDeck board = do
   return $ board {discardPile  = [top],
                   drawPile     = newDrawPile}
 
+
 addToCurrentPlayer :: MonadIO m => Board -> Int -> m Board
 addToCurrentPlayer _board n = do
   board <- if length (drawPile _board) <= n 
@@ -140,33 +145,16 @@ addToCurrentPlayer _board n = do
       
       
 
-executeCard :: Board -> Card -> Board
-executeCard board card = board
-
-placeCards :: Board -> [Card] -> Maybe Board
-placeCards board []    = Just board
-placeCards board cards = 
-  (`runCont` id) $ do
-    response <- callCC $ \exit -> do
-      let top = getTopCard board 
-      validateCardPlacement (head cards) top exit
-      return $ flip placeCards (tail cards) $ executeCard board (head cards)
-    return response
-  where
-    validateCardPlacement (Card (_, c1)) (Card (_, c2)) exit = do
-      when (c1 /= c2) (exit Nothing)
-
-
 addToDiscardPile :: Monad m => Board -> Card -> m Board
 addToDiscardPile b c = return $ b {discardPile = c : discardPile b}
+
 
 canPlaceCard :: Card -> Card -> Bool
 canPlaceCard (Card (r1, c1)) (Card (r2, c2)) = c1 == c2 || r1 == r2 
 
+
 executeCardEffect :: MonadIO m => Board -> Card -> m Board
-executeCardEffect b (Card (Add n, _)) = do
-  b' <- addToCurrentPlayer b n
-  return b'
+executeCardEffect b (Card (Add n, _)) = addToCurrentPlayer b n
 executeCardEffect b (Card (Number n, col)) = 
   return $ b {discardPile = Card (Number n, col) : discardPile b}
 executeCardEffect b (Card (Skip, _)) = return b -- add a list to keep track of skipped players
@@ -220,15 +208,31 @@ game players = do
         Nothing -> play b
         Just s  -> return (Score s, b)
 
+    -- checks if any player has 0 cards
     lookForWinner :: Board -> Maybe Player
-    lookForWinner b = find (\pl -> 
-          let Player {playerID=_, hand=cs} = pl in length cs == 0) 
-          (let Players (l, r) = boardPlayers b in l ++ r)  
+    lookForWinner b = 
+        find 
+            (\pl -> 
+                let Player {playerID=_, hand=cs} = pl 
+                in length cs == 0) 
+            (let Players (l, r) = boardPlayers b in l ++ r)  
        
+    -- checks whether player actually has those cards and then 
+    -- places them one by one and executes their effects
     processPlayerMove :: MonadIO m => [Card] -> Board -> m (Maybe Board)
     processPlayerMove move board = do      
-      helper move board 
-      
+      let hasCards = 
+            all 
+              (\c -> 
+                let Player {playerID=_, hand=cs} = getCurrentPlayer $ boardPlayers board 
+                in member c cs) 
+              move
+      if hasCards 
+        then helper move board 
+        else return Nothing
+
+    -- goes through cards, checks if player can place them, and if so
+    -- executes their effects
     helper :: MonadIO m => [Card] -> Board -> m (Maybe Board)
     helper [] board = return $ Just board
     helper (c : cs) board = 
