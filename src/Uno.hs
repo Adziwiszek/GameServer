@@ -64,7 +64,14 @@ instance Show Board where
                         acc ++ "\nID = " ++ show pid ++ ", hand = " ++ show cs)
                     ""
                     (let (Players (l, r)) = boardPlayers board in l ++ r)
-        in playerStr ++ "\nDraw pile = " ++ (show $ drawPile board) ++ "\nDiscard pile = " ++ (show $ discardPile board)
+        in playerStr ++ 
+          "\nDraw pile = " ++ show (drawPile board) ++ 
+          "\nDiscard pile = " ++ show (discardPile board) ++ 
+          "\nDirection = " ++ show (direction board)
+
+data GameMessage 
+  = IllegalMove
+  | SkippingTurn
 
 startingDeckSize :: Int 
 startingDeckSize = 3
@@ -101,8 +108,8 @@ nextPlayer board = case direction board of
 
 generateStartingDeck :: [Card]
 generateStartingDeck = do
-  action <- [Number i | i <- [0..9]] -- ++ [Add 2, Skip, Switch]
-  color <- [Red, Blue, Yellow, Green] 
+  action <- [Number i | i <- [0..9]]  ++ [Add 2]
+  color <- [Red, Blue{-, Yellow, Green-}] 
   return $ Card (action, color)
 
 
@@ -127,8 +134,8 @@ initBoard (Players (left, right)) = do
         (Player {playerID=pid, hand=myCards} : acc, cardsLeft')) 
         ([], cards) allPlayers
   return $ Board {boardPlayers  = Players ([], finalPlayers), 
-                  discardPile   = tail rest,
-                  drawPile      = [head rest],
+                  discardPile   = [head rest],
+                  drawPile      = tail rest,
                   direction     = DRight} 
 
 
@@ -255,7 +262,7 @@ game players = do
               move
       if hasCards 
         then helper move $ nextPlayer $ removeCardsFromPlayer board move
-        else return Nothing
+        else return Nothing -- player doesn't have this card in their hand
 
     -- goes through cards, checks if player can place them, and if so
     -- executes their effects
@@ -268,7 +275,7 @@ game players = do
           b' <- addToDiscardPile board c
           b'' <- executeCardEffect b' c
           helper cs b''
-        else return Nothing
+        else return Nothing -- this is not a legal move
      
 newtype TerminalUno x = TerminalUno { runTerminalUno :: IO x }
 
