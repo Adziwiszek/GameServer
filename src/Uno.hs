@@ -308,7 +308,7 @@ game players = do
     -- goes through cards, checks if player can place them, and if so
     -- executes their effects
     helper :: MonadIO m => [Card] -> Board -> m (Maybe Board)
-    helper [] board = return $ Just board
+    helper [] board = return $ Just $ board {canDraw = True}
     helper (c : cs) board = 
       let top = getTopCard board in
       if c `canPlaceCard` top 
@@ -345,17 +345,29 @@ parseMap =  Map.insert "draw" (Card (SelfDraw, Null)) $
     ) Map.empty generateStartingDeck
     
 instance UnoGame TerminalUno where  
-  getPlayerMove pid b = TerminalUno $ do
-    putStrLn $ "Board :\n" ++ show b
-    putStrLn $ "put your move player " ++ show pid
-    let toDraw = addToPlayer b
-    when (toDraw > 0) $ putStrLn $ "you have " ++ show toDraw ++ " cards to draw"
-    line <- getLine
-    let cards = parseCards line
-    putStrLn $ "your move = " ++ show cards
-    return cards 
+  getPlayerMove pid' b' = TerminalUno $ do
+    getStrMove pid' b'
 
     where
+        getStrMove pid b = do
+          putStrLn $ "\nBoard :" ++ show b
+          putStrLn $ "Can draw = " ++ show (canDraw b)
+          putStrLn $ "put your move player " ++ show pid
+          let toDraw = addToPlayer b
+          when (toDraw > 0) $ putStrLn $ "you have " ++ show toDraw ++ " cards to draw"
+          line <- getLine
+          let cards = parseCards line
+          case cards of 
+            [Card (SelfSkip, _)] | canDraw b -> do
+              putStrLn "Draw a card first!!!"
+              getStrMove pid b
+            [] -> do
+              putStrLn "You can't play empty hand!!!"
+              getStrMove pid b
+            _  -> do
+              putStrLn $ "your move = " ++ show cards
+              return cards 
+
         parseCards strCards = 
             let cs = words strCards
             in foldl
