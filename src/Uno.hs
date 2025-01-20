@@ -11,7 +11,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Control.Monad.Cont
 import Control.Monad.Random
-import Control.Monad.State
+import Control.Monad (when)
 --import Message
 
 data CardColor
@@ -19,13 +19,16 @@ data CardColor
   | Blue
   | Yellow
   | Green
+  | Null
   deriving (Eq, Show)
   
 data CardRole
   = Number Int
   | Add Int
-  -- | Skip
-  -- | Switch
+  | Skip
+  | Switch
+  | SelfDraw
+  | SelfSkip
   deriving (Eq, Show)
 
 newtype Card = Card (CardRole, CardColor) deriving (Eq, Show)
@@ -37,9 +40,9 @@ newtype Score = Score Player deriving Show
 class Monad m => UnoGame m  where
   getPlayerMove :: Int -> Board -> m [Card]
 
-class MonadState Board m => UnoState m where
+{-class MonadState Board m => UnoState m where
   getCurrentPlayer_ :: m Player
-  updateCurrentPlayer :: Player -> m ()
+  updateCurrentPlayer :: Player -> m ()-}
 
 data Player = Player
   { playerID :: Int
@@ -53,7 +56,10 @@ data Board = Board {
   boardPlayers   :: Players,
   discardPile    :: [Card],
   drawPile       :: [Card],
-  direction      :: Direction
+  direction      :: Direction,
+  skipPlayers    :: [Int],
+  addToPlayer    :: Int,
+  canDraw        :: Bool
 }
 
 instance Show Board where
@@ -72,9 +78,14 @@ instance Show Board where
 data GameMessage 
   = IllegalMove
   | SkippingTurn
+  | AddingCards
 
 startingDeckSize :: Int 
 startingDeckSize = 3
+
+remove :: Eq a => a -> [a] -> [a]
+remove _ [] = []
+remove e (x:xs) = if e == x then xs else x : remove e xs
 
 member :: Eq a => a -> [a] -> Bool
 member _ [] = False
@@ -89,6 +100,9 @@ getTopCard = head . discardPile
 getCurrentPlayer :: Players -> Player
 getCurrentPlayer (Players (left, []))    = getCurrentPlayer (Players ([], reverse left))
 getCurrentPlayer (Players (_, right)) = head right
+
+getNextPlayer :: Board -> Player
+getNextPlayer board = getCurrentPlayer $ boardPlayers $ nextPlayer board
 
 nextPlayer :: Board -> Board
 nextPlayer board = case direction board of 
@@ -131,12 +145,15 @@ initBoard (Players (left, right)) = do
   let cards = evalRand (shuffle generateStartingDeck) g
   let (finalPlayers, rest) = foldl (\(acc, cardsLeft) (Player {playerID=pid, hand=_}) -> 
         let (myCards, cardsLeft') = takeOut startingDeckSize cardsLeft in 
-        (Player {playerID=pid, hand=myCards} : acc, cardsLeft')) 
+        (Player {playerID=pid, hand=myCards ++ [Card (Add 2, Red), Card (Add 2, Blue)]} : acc, cardsLeft')) 
         ([], cards) allPlayers
   return $ Board {boardPlayers  = Players ([], finalPlayers), 
                   discardPile   = [head rest],
                   drawPile      = tail rest,
-                  direction     = DRight} 
+                  direction     = DRight,
+                  skipPlayers   = [],
+                  addToPlayer   = 0,
+                  canDraw       = True} 
 
 
 reshuffleDeck :: MonadIO m => Board -> m Board
@@ -186,10 +203,11 @@ canPlaceCard (Card (r1, c1)) (Card (r2, c2)) = c1 == c2 || r1 == r2
 
 
 executeCardEffect :: MonadIO m => Board -> Card -> m Board
-executeCardEffect b (Card (Add n, _)) = addToCurrentPlayer b n
+-- executeCardEffect b (Card (Add n, _)) = addToCurrentPlayer b n
+executeCardEffect b (Card (Add n, col)) = return $ b {addToPlayer=addToPlayer b + n}
 executeCardEffect b (Card (Number n, col)) = 
-  return $ b {discardPile = Card (Number n, col) : discardPile b}
--- executeCardEffect b (Card (Skip, _)) = return b -- add a list to keep track of skipped players
+  return b 
+--executeCardEffect b (Card (Skip, _)) = return b -- add a list to keep track of skipped players
 {- executeCardEffect b (Card (Switch, _)) = 
   return $ b {direction= 
   case direction b of
@@ -226,8 +244,11 @@ game players = do
     play board = do
       -- move is a list of cards that the player played
       -- check if player chose to pick a card, they can then play it or pass
+      -- check if player before added cards, current player can now 
+      -- take those cards or play add card to give to the next player
       -- we check if a move is legal
       let currentPlayer = getCurrentPlayer $ boardPlayers board
+      -- check if any effects are affecting this player
       let pid = playerID currentPlayer
       move <- getPlayerMove pid board
       newBoard <- processPlayerMove move board
@@ -253,6 +274,26 @@ game players = do
     -- checks whether player actually has those cards and then 
     -- places them one by one and executes their effects
     processPlayerMove :: MonadIO m => [Card] -> Board -> m (Maybe Board)
+    processPlayerMove [Card (SelfDraw, _)] board =
+      if canDraw board 
+        then do
+          let board' = board {canDraw = False}
+          let cardsToDraw = addToPlayer board'
+          if cardsToDraw > 0 
+            then do
+              b' <- addToCurrentPlayer board' cardsToDraw
+              return $ Just $ b' { addToPlayer = 0 }
+            else do
+              b' <- addToCurrentPlayer board' 1
+              return $ Just b'
+        else return Nothing -- Player can't draw cards anymore
+    processPlayerMove [Card (SelfSkip, _)] board = do
+      let pid = playerID $ getCurrentPlayer $ boardPlayers board
+      let newSkip = 
+            if member pid $ skipPlayers board
+              then remove pid $ skipPlayers board
+              else skipPlayers board
+      return $ Just $ nextPlayer $ board {skipPlayers = newSkip, canDraw=True}
     processPlayerMove move board = do      
       let hasCards = 
             all 
@@ -295,7 +336,9 @@ instance MonadIO TerminalUno where
     liftIO = TerminalUno
 
 parseMap :: Map String Card
-parseMap = foldl (\acc x -> 
+parseMap =  Map.insert "draw" (Card (SelfDraw, Null)) $
+            Map.insert "skip" (Card (SelfSkip, Null)) $ 
+            foldl (\acc x -> 
     case x of 
         Card (Number n, c) -> Map.insert (show n ++ show c) x acc
         Card (Add n, c)    -> Map.insert ("add" ++ show n ++ show c) x acc
@@ -305,6 +348,8 @@ instance UnoGame TerminalUno where
   getPlayerMove pid b = TerminalUno $ do
     putStrLn $ "Board :\n" ++ show b
     putStrLn $ "put your move player " ++ show pid
+    let toDraw = addToPlayer b
+    when (toDraw > 0) $ putStrLn $ "you have " ++ show toDraw ++ " cards to draw"
     line <- getLine
     let cards = parseCards line
     putStrLn $ "your move = " ++ show cards
