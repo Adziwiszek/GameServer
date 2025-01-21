@@ -107,6 +107,13 @@ getCardRole (Card (r, _)) = r
 getTopCard :: Board -> Card
 getTopCard = head . discardPile
 
+cardsOfSameRole :: [Card] -> Bool
+cardsOfSameRole [] = False
+cardsOfSameRole (x:xs) = check xs x
+  where
+    check [] _ = True
+    check (y:ys) c = getCardRole y == getCardRole c && check ys y
+
 getCurrentPlayer :: Board -> Player
 getCurrentPlayer board = 
   case boardPlayers board of
@@ -270,7 +277,7 @@ processEndTurn board
 
 processRegularMove :: MonadIO m => [Card] -> Board -> m (Maybe Board)
 processRegularMove move board = do
-  if not $ hasCards move board
+  if not (hasCards move board) || not (cardsOfSameRole move)
     then return Nothing
     else do
       processedBoard <- processCards move $ removeCardsFromPlayer board move
@@ -396,6 +403,7 @@ instance UnoGame TerminalUno where
           when (toDraw > 0) $ putStrLn $ "you have " ++ show toDraw ++ " cards to draw"
           line <- getLine
           let cards = parseCards line
+          unless (cardsOfSameRole cards) $ putStrLn "you must play cards of the same role"
           case cards of 
             {-[Card (EndTurn, _)] | canDraw b && skipTurns b == 0 -> do
               putStrLn "Draw a card first!!!"
