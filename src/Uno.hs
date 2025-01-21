@@ -1,9 +1,9 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, FunctionalDependencies #-}
+-- {-# LANGUAGE FlexibleContexts, FlexibleInstances, FunctionalDependencies #-}
 -- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
 -- {-# LANGUAGE InstanceSigs #-}
 
-module Uno where 
+module Uno (game, runGame) where 
 
 import GHC.Generics (Generic)
 import Data.List (find)
@@ -11,7 +11,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Control.Monad.Cont
 import Control.Monad.Random
-import Control.Monad (when)
+-- import Control.Monad (when)
 --import Message
 
 data CardColor
@@ -26,9 +26,9 @@ data CardRole
   = Number Int
   | Add Int
   | Skip
-  | Switch
+  -- | Switch
   | SelfDraw
-  | SelfSkip
+  | EndTurn
   deriving (Eq, Show)
 
 newtype Card = Card (CardRole, CardColor) deriving (Eq, Show)
@@ -53,13 +53,15 @@ data Player = Player
 newtype Players = Players ([Player], [Player])
 
 data Board = Board {
-  boardPlayers   :: Players,
-  discardPile    :: [Card],
-  drawPile       :: [Card],
-  direction      :: Direction,
-  skipPlayers    :: [Int],
-  addToPlayer    :: Int,
-  canDraw        :: Bool
+  boardPlayers     :: Players,
+  discardPile      :: [Card],
+  drawPile         :: [Card],
+  direction        :: Direction,
+  skipPlayers      :: [Int],
+  addToPlayer      :: Int,
+  skipTurns        :: Int,
+  canDraw          :: Bool,
+  canTransferSkip  :: Bool
 }
 
 instance Show Board where
@@ -75,17 +77,22 @@ instance Show Board where
           "\nDiscard pile = " ++ show (discardPile board) ++ 
           "\nDirection = " ++ show (direction board)
 
+{-
 data GameMessage 
   = IllegalMove
   | SkippingTurn
   | AddingCards
+-}
 
 startingDeckSize :: Int 
 startingDeckSize = 3
 
 remove :: Eq a => a -> [a] -> [a]
 remove _ [] = []
-remove e (x:xs) = if e == x then xs else x : remove e xs
+remove e xs = rm xs []
+  where 
+    rm [] _ = xs
+    rm (x:xs') acc = if e == x then reverse acc ++ xs' else rm xs' (x:acc) 
 
 member :: Eq a => a -> [a] -> Bool
 member _ [] = False
@@ -94,15 +101,20 @@ member a (x:xs) = a == x || member a xs
 takeOut :: Int -> [a] -> ([a], [a])
 takeOut n xs = (take n xs, drop (n + 1) xs)
 
+getCardRole :: Card -> CardRole
+getCardRole (Card (r, _)) = r
+
 getTopCard :: Board -> Card
 getTopCard = head . discardPile
 
-getCurrentPlayer :: Players -> Player
-getCurrentPlayer (Players (left, []))    = getCurrentPlayer (Players ([], reverse left))
-getCurrentPlayer (Players (_, right)) = head right
+getCurrentPlayer :: Board -> Player
+getCurrentPlayer board = 
+  case boardPlayers board of
+    Players (left, []) -> getCurrentPlayer $ board {boardPlayers=Players ([], reverse left)}
+    Players (_, right) -> head right
 
 getNextPlayer :: Board -> Player
-getNextPlayer board = getCurrentPlayer $ boardPlayers $ nextPlayer board
+getNextPlayer board = getCurrentPlayer $ nextPlayer board
 
 nextPlayer :: Board -> Board
 nextPlayer board = case direction board of 
@@ -122,8 +134,8 @@ nextPlayer board = case direction board of
 
 generateStartingDeck :: [Card]
 generateStartingDeck = do
-  action <- [Number i | i <- [0..9]]  ++ [Add 2]
-  color <- [Red, Blue{-, Yellow, Green-}] 
+  action <- [Number i | i <- [0..2]] ++ [Skip]
+  color <- [Red, Blue, Yellow, Green] 
   return $ Card (action, color)
 
 
@@ -135,7 +147,7 @@ shuffle xs = do
   rest <- shuffle xs'
   return $ nth : rest 
   where
-    extractNth xs n = (xs !! n, take n xs ++ drop (n + 1) xs)
+    extractNth xs' n = (xs' !! n, take n xs' ++ drop (n + 1) xs')
 
 
 initBoard :: MonadIO m => Players -> m Board 
@@ -145,15 +157,17 @@ initBoard (Players (left, right)) = do
   let cards = evalRand (shuffle generateStartingDeck) g
   let (finalPlayers, rest) = foldl (\(acc, cardsLeft) (Player {playerID=pid, hand=_}) -> 
         let (myCards, cardsLeft') = takeOut startingDeckSize cardsLeft in 
-        (Player {playerID=pid, hand=myCards ++ [Card (Add 2, Red), Card (Add 2, Blue)]} : acc, cardsLeft')) 
+        (Player {playerID=pid, hand=myCards ++ [Card (Skip, Red), Card (Skip, Blue)]} : acc, cardsLeft')) 
         ([], cards) allPlayers
-  return $ Board {boardPlayers  = Players ([], finalPlayers), 
-                  discardPile   = [head rest],
-                  drawPile      = tail rest,
-                  direction     = DRight,
-                  skipPlayers   = [],
-                  addToPlayer   = 0,
-                  canDraw       = True} 
+  return $ Board {boardPlayers    = Players ([], finalPlayers), 
+                  discardPile     = [head rest],
+                  drawPile        = tail rest,
+                  direction       = DRight,
+                  skipPlayers     = [],
+                  skipTurns       = 0,
+                  addToPlayer     = 0,
+                  canDraw         = True,
+                  canTransferSkip = True} 
 
 
 reshuffleDeck :: MonadIO m => Board -> m Board
@@ -194,6 +208,11 @@ removeCardsFromPlayer board move =
             [] cards
     in board {boardPlayers=Players (left, Player {playerID=pid, hand=newHand}:right)}
 
+currentPlayerWaits :: Board -> Bool
+currentPlayerWaits board = 
+  let currentID = playerID $ getCurrentPlayer board 
+  in skipTurns board > 0 || member currentID (skipPlayers board)
+
 addToDiscardPile :: Monad m => Board -> Card -> m Board
 addToDiscardPile b c = return $ b {discardPile = c : discardPile b}
 
@@ -203,11 +222,10 @@ canPlaceCard (Card (r1, c1)) (Card (r2, c2)) = c1 == c2 || r1 == r2
 
 
 executeCardEffect :: MonadIO m => Board -> Card -> m Board
--- executeCardEffect b (Card (Add n, _)) = addToCurrentPlayer b n
-executeCardEffect b (Card (Add n, col)) = return $ b {addToPlayer=addToPlayer b + n}
-executeCardEffect b (Card (Number n, col)) = 
+executeCardEffect b (Card (Add n, _)) = return $ b {addToPlayer=addToPlayer b + n}
+executeCardEffect b (Card (Number _, _)) = 
   return b 
---executeCardEffect b (Card (Skip, _)) = return b -- add a list to keep track of skipped players
+executeCardEffect b (Card (Skip, _)) = return $ b {skipTurns=skipTurns b + 1}
 {- executeCardEffect b (Card (Switch, _)) = 
   return $ b {direction= 
   case direction b of
@@ -215,7 +233,64 @@ executeCardEffect b (Card (Number n, col)) =
     DRight -> DLeft
   }
 -}
+-- self cards are not processed here
+-- because they have Null color, they can't be placed on any other cards,
+-- so we don't need to worry about it here
+executeCardEffect b _ = return b 
+
+processPlayerMove :: MonadIO m => [Card] -> Board -> m (Maybe Board)
+processPlayerMove move board = case move of 
+  [Card (SelfDraw, _)] -> processSelfDraw board
+  [Card (EndTurn, _)]  -> processEndTurn board
+  _                    -> processRegularMove move board
         
+
+processSelfDraw :: MonadIO m => Board -> m (Maybe Board)
+processSelfDraw board
+  | not (canDraw board) || not (currentPlayerWaits board) = return Nothing
+  | otherwise = do
+      let board' = board {canDraw = False}
+      let cardsToDraw = max 1 (addToPlayer board')
+      drawnBoard <- addToCurrentPlayer board' cardsToDraw
+      return $ Just $ drawnBoard {addToPlayer = 0}
+
+processEndTurn :: MonadIO m => Board -> m (Maybe Board)
+processEndTurn board 
+  | canDraw board && not (currentPlayerWaits board) = return Nothing 
+  | otherwise = do
+    let currentID = playerID $ getCurrentPlayer board
+    let newSkipList = if skipTurns board == 0 
+        then remove currentID $ skipPlayers board
+        else skipPlayers board ++ [currentID | _ <- [1..skipTurns board - 1]]
+    return $ Just $ nextPlayer $ board
+      { skipPlayers     = newSkipList
+      , canDraw         = True
+      , skipTurns       = 0
+      , canTransferSkip = True
+      }
+
+processRegularMove :: MonadIO m => [Card] -> Board -> m (Maybe Board)
+processRegularMove move board = do
+  if not $ hasCards move board
+    then return Nothing
+    else processCards move $ nextPlayer $ removeCardsFromPlayer board move
+  where 
+    hasCards cards b = all (\c -> member c (hand $ getCurrentPlayer b)) cards
+
+processCards :: MonadIO m => [Card] -> Board -> m (Maybe Board)
+processCards [] board = return $ Just $ board {canDraw = True}
+processCards (c:cs) board 
+  | not (canPlayCard c board) = return Nothing
+  | otherwise = do
+    newBoard <- addToDiscardPile board c
+    effectBoard <- executeCardEffect newBoard c
+    processCards cs effectBoard
+  where 
+    canPlayCard card b = 
+      card `canPlaceCard` getTopCard b &&
+      (skipTurns b == 0 || (skipTurns b > 0 && getCardRole card == Skip))
+        
+    
 {- Rules
  - player makes a move (gives list of cards they want to play)
  - check if they gave correct cards
@@ -247,7 +322,7 @@ game players = do
       -- check if player before added cards, current player can now 
       -- take those cards or play add card to give to the next player
       -- we check if a move is legal
-      let currentPlayer = getCurrentPlayer $ boardPlayers board
+      let currentPlayer = getCurrentPlayer board
       -- check if any effects are affecting this player
       let pid = playerID currentPlayer
       move <- getPlayerMove pid board
@@ -271,53 +346,7 @@ game players = do
                 in length cs == 0) 
             (let Players (l, r) = boardPlayers b in l ++ r)  
        
-    -- checks whether player actually has those cards and then 
-    -- places them one by one and executes their effects
-    processPlayerMove :: MonadIO m => [Card] -> Board -> m (Maybe Board)
-    processPlayerMove [Card (SelfDraw, _)] board =
-      if canDraw board 
-        then do
-          let board' = board {canDraw = False}
-          let cardsToDraw = addToPlayer board'
-          if cardsToDraw > 0 
-            then do
-              b' <- addToCurrentPlayer board' cardsToDraw
-              return $ Just $ b' { addToPlayer = 0 }
-            else do
-              b' <- addToCurrentPlayer board' 1
-              return $ Just b'
-        else return Nothing -- Player can't draw cards anymore
-    processPlayerMove [Card (SelfSkip, _)] board = do
-      let pid = playerID $ getCurrentPlayer $ boardPlayers board
-      let newSkip = 
-            if member pid $ skipPlayers board
-              then remove pid $ skipPlayers board
-              else skipPlayers board
-      return $ Just $ nextPlayer $ board {skipPlayers = newSkip, canDraw=True}
-    processPlayerMove move board = do      
-      let hasCards = 
-            all 
-              (\c -> 
-                let Player {playerID=_, hand=cs} = getCurrentPlayer $ boardPlayers board 
-                in member c cs) 
-              move
-      if hasCards 
-        then helper move $ nextPlayer $ removeCardsFromPlayer board move
-        else return Nothing -- player doesn't have this card in their hand
 
-    -- goes through cards, checks if player can place them, and if so
-    -- executes their effects
-    helper :: MonadIO m => [Card] -> Board -> m (Maybe Board)
-    helper [] board = return $ Just $ board {canDraw = True}
-    helper (c : cs) board = 
-      let top = getTopCard board in
-      if c `canPlaceCard` top 
-        then do
-          b' <- addToDiscardPile board c
-          b'' <- executeCardEffect b' c
-          helper cs b''
-        else return Nothing -- this is not a legal move
-     
 newtype TerminalUno x = TerminalUno { runTerminalUno :: IO x }
 
 instance Functor TerminalUno where 
@@ -335,13 +364,17 @@ instance Monad TerminalUno where
 instance MonadIO TerminalUno where
     liftIO = TerminalUno
 
-parseMap :: Map String Card
-parseMap =  Map.insert "draw" (Card (SelfDraw, Null)) $
-            Map.insert "skip" (Card (SelfSkip, Null)) $ 
-            foldl (\acc x -> 
+parseCardMap :: Map String Card
+parseCardMap = 
+    Map.insert "draw" (Card (SelfDraw, Null)) $
+    Map.insert "endturn" (Card (EndTurn, Null)) $
+    foldl (\acc x -> 
     case x of 
         Card (Number n, c) -> Map.insert (show n ++ show c) x acc
         Card (Add n, c)    -> Map.insert ("add" ++ show n ++ show c) x acc
+        Card (Skip, c)     -> Map.insert ("skip" ++ show c) (Card (Skip, c)) acc
+        Card (EndTurn, _)  -> Map.insert "endturn" (Card (EndTurn, Null)) acc
+        Card (SelfDraw, _) -> Map.insert "draw" (Card (SelfDraw, Null)) acc
     ) Map.empty generateStartingDeck
     
 instance UnoGame TerminalUno where  
@@ -353,14 +386,16 @@ instance UnoGame TerminalUno where
           putStrLn $ "\nBoard :" ++ show b
           putStrLn $ "Can draw = " ++ show (canDraw b)
           putStrLn $ "put your move player " ++ show pid
+          when (skipTurns b > 0) $ putStrLn $ "you are facing " ++ show (skipTurns b) ++ " skipped turns"
+          when (member pid $ skipPlayers b) $ putStrLn "you are skipping a turn"
           let toDraw = addToPlayer b
           when (toDraw > 0) $ putStrLn $ "you have " ++ show toDraw ++ " cards to draw"
           line <- getLine
           let cards = parseCards line
           case cards of 
-            [Card (SelfSkip, _)] | canDraw b -> do
+            {-[Card (EndTurn, _)] | canDraw b && skipTurns b == 0 -> do
               putStrLn "Draw a card first!!!"
-              getStrMove pid b
+              getStrMove pid b-}
             [] -> do
               putStrLn "You can't play empty hand!!!"
               getStrMove pid b
@@ -371,7 +406,7 @@ instance UnoGame TerminalUno where
         parseCards strCards = 
             let cs = words strCards
             in foldl
-                (\acc x -> case Map.lookup x parseMap of
+                (\acc x -> case Map.lookup x parseCardMap of
                     Just c -> c : acc
                     Nothing -> acc)
                 []
