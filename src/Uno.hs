@@ -26,7 +26,7 @@ data CardRole
   = Number Int
   | Add Int
   | Skip
-  -- | Switch
+  | Switch
   | SelfDraw
   | EndTurn
   deriving (Eq, Show)
@@ -134,7 +134,7 @@ nextPlayer board = case direction board of
 
 generateStartingDeck :: [Card]
 generateStartingDeck = do
-  action <- [Number i | i <- [0..2]] ++ [Skip]
+  action <- [Number i | i <- [0..4]] ++ [Switch, Skip]
   color <- [Red, Blue, Yellow, Green] 
   return $ Card (action, color)
 
@@ -157,7 +157,7 @@ initBoard (Players (left, right)) = do
   let cards = evalRand (shuffle generateStartingDeck) g
   let (finalPlayers, rest) = foldl (\(acc, cardsLeft) (Player {playerID=pid, hand=_}) -> 
         let (myCards, cardsLeft') = takeOut startingDeckSize cardsLeft in 
-        (Player {playerID=pid, hand=myCards ++ [Card (Skip, Red), Card (Skip, Blue)]} : acc, cardsLeft')) 
+        (Player {playerID=pid, hand=myCards} : acc, cardsLeft')) 
         ([], cards) allPlayers
   return $ Board {boardPlayers    = Players ([], finalPlayers), 
                   discardPile     = [head rest],
@@ -226,13 +226,12 @@ executeCardEffect b (Card (Add n, _)) = return $ b {addToPlayer=addToPlayer b + 
 executeCardEffect b (Card (Number _, _)) = 
   return b 
 executeCardEffect b (Card (Skip, _)) = return $ b {skipTurns=skipTurns b + 1}
-{- executeCardEffect b (Card (Switch, _)) = 
+executeCardEffect b (Card (Switch, _)) = 
   return $ b {direction= 
   case direction b of
     DLeft  -> DRight
     DRight -> DLeft
   }
--}
 -- self cards are not processed here
 -- because they have Null color, they can't be placed on any other cards,
 -- so we don't need to worry about it here
@@ -247,7 +246,7 @@ processPlayerMove move board = case move of
 
 processSelfDraw :: MonadIO m => Board -> m (Maybe Board)
 processSelfDraw board
-  | not (canDraw board) || not (currentPlayerWaits board) = return Nothing
+  | not (canDraw board) && not (currentPlayerWaits board) = return Nothing
   | otherwise = do
       let board' = board {canDraw = False}
       let cardsToDraw = max 1 (addToPlayer board')
@@ -273,7 +272,11 @@ processRegularMove :: MonadIO m => [Card] -> Board -> m (Maybe Board)
 processRegularMove move board = do
   if not $ hasCards move board
     then return Nothing
-    else processCards move $ nextPlayer $ removeCardsFromPlayer board move
+    else do
+      processedBoard <- processCards move $ removeCardsFromPlayer board move
+      case processedBoard of
+        Nothing -> return Nothing
+        Just b  -> return $ Just $ nextPlayer b
   where 
     hasCards cards b = all (\c -> member c (hand $ getCurrentPlayer b)) cards
 
@@ -370,11 +373,12 @@ parseCardMap =
     Map.insert "endturn" (Card (EndTurn, Null)) $
     foldl (\acc x -> 
     case x of 
-        Card (Number n, c) -> Map.insert (show n ++ show c) x acc
-        Card (Add n, c)    -> Map.insert ("add" ++ show n ++ show c) x acc
-        Card (Skip, c)     -> Map.insert ("skip" ++ show c) (Card (Skip, c)) acc
-        Card (EndTurn, _)  -> Map.insert "endturn" (Card (EndTurn, Null)) acc
-        Card (SelfDraw, _) -> Map.insert "draw" (Card (SelfDraw, Null)) acc
+        Card (Number n, c)   -> Map.insert (show n ++ show c) x acc
+        Card (Add n, c)      -> Map.insert ("add" ++ show n ++ show c) x acc
+        Card (Skip, c)       -> Map.insert ("skip" ++ show c) (Card (Skip, c)) acc
+        Card (Switch, c)     -> Map.insert ("switch" ++ show c) (Card (Switch, c)) acc
+        Card (EndTurn, _)    -> Map.insert "endturn" (Card (EndTurn, Null)) acc
+        Card (SelfDraw, _)   -> Map.insert "draw" (Card (SelfDraw, Null)) acc
     ) Map.empty generateStartingDeck
     
 instance UnoGame TerminalUno where  
@@ -417,7 +421,7 @@ createPlayer pid = Player {playerID=pid, hand=[]}
 
 runGame :: IO ()
 runGame  = do
-    let players = Players ([], [createPlayer 0, createPlayer 1])
+    let players = Players ([], [createPlayer 0, createPlayer 1, createPlayer 2, createPlayer 3])
     let game' :: TerminalUno (Score, Board)
         game' = game players
     (result, finalBoard) <- runTerminalUno game'
