@@ -19,6 +19,7 @@ data CardColor
   | Blue
   | Yellow
   | Green
+  | Colorless
   | Null
   deriving (Eq, Show)
   
@@ -27,6 +28,7 @@ data CardRole
   | Add Int
   | Skip
   | Switch
+  | ChangeColor CardColor
   | SelfDraw
   | EndTurn
   deriving (Eq, Show)
@@ -61,7 +63,8 @@ data Board = Board {
   addToPlayer      :: Int,
   skipTurns        :: Int,
   canDraw          :: Bool,
-  canTransferSkip  :: Bool
+  canTransferSkip  :: Bool,
+  chosenColor      :: CardColor
 }
 
 instance Show Board where
@@ -75,13 +78,13 @@ instance Show Board where
         in playerStr ++ 
           "\nDraw pile = " ++ show (drawPile board) ++ 
           "\nDiscard pile = " ++ show (discardPile board) ++ 
-          "\nDirection = " ++ show (direction board)
+          "\nDirection = " ++ show (direction board) ++
+          "\nTop color = " ++ show (chosenColor board)
 
 {-
 data GameMessage 
   = IllegalMove
-  | SkippingTurn
-  | AddingCards
+  | NoSuchCard
 -}
 
 startingDeckSize :: Int 
@@ -98,14 +101,27 @@ member :: Eq a => a -> [a] -> Bool
 member _ [] = False
 member a (x:xs) = a == x || member a xs
 
+cardMember :: Card -> [Card] -> Bool
+cardMember _ [] = False
+cardMember (Card (ChangeColor _, _)) (Card (ChangeColor _, _):_) = True
+cardMember a (x:xs) = a == x || cardMember a xs
+
 takeOut :: Int -> [a] -> ([a], [a])
 takeOut n xs = (take n xs, drop (n + 1) xs)
 
 getCardRole :: Card -> CardRole
 getCardRole (Card (r, _)) = r
 
+getCardColor :: Card -> CardColor
+getCardColor (Card (_, c)) = c
+
 getTopCard :: Board -> Card
 getTopCard = head . discardPile
+
+getTopColor :: Board -> CardColor
+getTopColor b = case getCardColor $ getTopCard b of
+  Colorless -> chosenColor b
+  c         -> c
 
 cardsOfSameRole :: [Card] -> Bool
 cardsOfSameRole [] = False
@@ -140,10 +156,12 @@ nextPlayer board = case direction board of
   
 
 generateStartingDeck :: [Card]
-generateStartingDeck = do
-  action <- [Number i | i <- [0..4]] ++ [Switch, Skip]
-  color <- [Red, Blue, Yellow, Green] 
-  return $ Card (action, color)
+generateStartingDeck = helper ++ [Card(ChangeColor Null, Colorless) | _ <- [0..4]]
+  where 
+    helper = do
+      action <- [Number i | i <- [0..4]] ++ [Switch, Skip]
+      color <- [Red, Blue, Yellow, Green] 
+      return $ Card (action, color)
 
 
 shuffle :: (RandomGen g) => [a] -> Rand g [a]
@@ -174,7 +192,9 @@ initBoard (Players (left, right)) = do
                   skipTurns       = 0,
                   addToPlayer     = 0,
                   canDraw         = True,
-                  canTransferSkip = True} 
+                  canTransferSkip = True,
+                  chosenColor     = getCardColor $ head rest
+                  } 
 
 
 reshuffleDeck :: MonadIO m => Board -> m Board
@@ -209,7 +229,7 @@ removeCardsFromPlayer board move =
     in let (Player {playerID=pid, hand=cards}) = p
     in let newHand = foldl 
             (\acc c -> 
-                if member c move 
+                if cardMember c move 
                 then acc
                 else c : acc) 
             [] cards
@@ -224,15 +244,16 @@ addToDiscardPile :: Monad m => Board -> Card -> m Board
 addToDiscardPile b c = return $ b {discardPile = c : discardPile b}
 
 
-canPlaceCard :: Card -> Card -> Bool
-canPlaceCard (Card (r1, c1)) (Card (r2, c2)) = c1 == c2 || r1 == r2 
-
+canPlaceCard :: Card -> Board -> Bool
+canPlaceCard (Card (r1, c1)) b = 
+  let (Card (r2, _)) = getTopCard b 
+  in r1 == r2 || c1 == Colorless || c1 == chosenColor b
 
 executeCardEffect :: MonadIO m => Board -> Card -> m Board
-executeCardEffect b (Card (Add n, _)) = return $ b {addToPlayer=addToPlayer b + n}
-executeCardEffect b (Card (Number _, _)) = 
-  return b 
-executeCardEffect b (Card (Skip, _)) = return $ b {skipTurns=skipTurns b + 1}
+executeCardEffect b (Card (ChangeColor c, _)) = return $ b {chosenColor=c}
+executeCardEffect b (Card (Add n, _))       = return $ b {addToPlayer=addToPlayer b + n}
+executeCardEffect b (Card (Number _, c))    = return $ b {chosenColor=c}
+executeCardEffect b (Card (Skip, _))        = return $ b {skipTurns=skipTurns b + 1}
 executeCardEffect b (Card (Switch, _)) = 
   return $ b {direction= 
   case direction b of
@@ -242,7 +263,8 @@ executeCardEffect b (Card (Switch, _)) =
 -- self cards are not processed here
 -- because they have Null color, they can't be placed on any other cards,
 -- so we don't need to worry about it here
-executeCardEffect b _ = return b 
+executeCardEffect b (Card (SelfDraw, _)) = return b 
+executeCardEffect b (Card (EndTurn, _)) = return b 
 
 processPlayerMove :: MonadIO m => [Card] -> Board -> m (Maybe Board)
 processPlayerMove move board = case move of 
@@ -285,7 +307,7 @@ processRegularMove move board = do
         Nothing -> return Nothing
         Just b  -> return $ Just $ nextPlayer b
   where 
-    hasCards cards b = all (\c -> member c (hand $ getCurrentPlayer b)) cards
+    hasCards cards b = all (\c -> cardMember c (hand $ getCurrentPlayer b)) cards
 
 processCards :: MonadIO m => [Card] -> Board -> m (Maybe Board)
 processCards [] board = return $ Just $ board {canDraw = True}
@@ -297,7 +319,7 @@ processCards (c:cs) board
     processCards cs effectBoard
   where 
     canPlayCard card b = 
-      card `canPlaceCard` getTopCard b &&
+      canPlaceCard card b &&
       (skipTurns b == 0 || (skipTurns b > 0 && getCardRole card == Skip))
         
     
@@ -380,12 +402,13 @@ parseCardMap =
     Map.insert "endturn" (Card (EndTurn, Null)) $
     foldl (\acc x -> 
     case x of 
-        Card (Number n, c)   -> Map.insert (show n ++ show c) x acc
-        Card (Add n, c)      -> Map.insert ("add" ++ show n ++ show c) x acc
-        Card (Skip, c)       -> Map.insert ("skip" ++ show c) (Card (Skip, c)) acc
-        Card (Switch, c)     -> Map.insert ("switch" ++ show c) (Card (Switch, c)) acc
-        Card (EndTurn, _)    -> Map.insert "endturn" (Card (EndTurn, Null)) acc
-        Card (SelfDraw, _)   -> Map.insert "draw" (Card (SelfDraw, Null)) acc
+        Card (Number n, c)       -> Map.insert (show n ++ show c) x acc
+        Card (Add n, c)          -> Map.insert ("add" ++ show n ++ show c) x acc
+        Card (Skip, c)           -> Map.insert ("skip" ++ show c) (Card (Skip, c)) acc
+        Card (Switch, c)         -> Map.insert ("switch" ++ show c) (Card (Switch, c)) acc
+        Card (ChangeColor _, _)  -> Map.insert "toBlue" (Card (ChangeColor Blue, Colorless)) $ Map.insert "toRed" (Card (ChangeColor Red, Colorless)) acc
+        Card (EndTurn, _)        -> Map.insert "endturn" (Card (EndTurn, Null)) acc
+        Card (SelfDraw, _)       -> Map.insert "draw" (Card (SelfDraw, Null)) acc
     ) Map.empty generateStartingDeck
     
 instance UnoGame TerminalUno where  
@@ -403,7 +426,7 @@ instance UnoGame TerminalUno where
           when (toDraw > 0) $ putStrLn $ "you have " ++ show toDraw ++ " cards to draw"
           line <- getLine
           let cards = parseCards line
-          unless (cardsOfSameRole cards) $ putStrLn "you must play cards of the same role"
+          -- unless (cardsOfSameRole cards) $ putStrLn "you must play cards of the same role"
           case cards of 
             {-[Card (EndTurn, _)] | canDraw b && skipTurns b == 0 -> do
               putStrLn "Draw a card first!!!"
