@@ -32,7 +32,9 @@ executable GameServer
                        binary,
                        ansi-terminal, 
                        process,
-                       MonadRandom
+                       MonadRandom,
+                       sdl2,
+                       text
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities
