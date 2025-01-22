@@ -29,6 +29,7 @@ data CardRole
   | Skip
   | Switch
   | ChangeColor CardColor
+  | AddColorless (Int, CardColor)
   | SelfDraw
   | EndTurn
   deriving (Eq, Show)
@@ -104,6 +105,7 @@ member a (x:xs) = a == x || member a xs
 cardMember :: Card -> [Card] -> Bool
 cardMember _ [] = False
 cardMember (Card (ChangeColor _, _)) (Card (ChangeColor _, _):_) = True
+cardMember (Card (AddColorless _, _)) (Card (AddColorless _, _):_) = True
 cardMember a (x:xs) = a == x || cardMember a xs
 
 takeOut :: Int -> [a] -> ([a], [a])
@@ -156,10 +158,10 @@ nextPlayer board = case direction board of
   
 
 generateStartingDeck :: [Card]
-generateStartingDeck = helper ++ [Card(ChangeColor Null, Colorless) | _ <- [0..4]]
+generateStartingDeck = helper ++ {- [Card(ChangeColor Null, Colorless) | _ <- [1..4]] ++ -} [Card(AddColorless (4, Null), Colorless) | _ <- [1..10]]
   where 
     helper = do
-      action <- [Number i | i <- [0..4]] ++ [Switch, Skip]
+      action <- [Number i | i <- [0..4]] -- ++ [Switch, Skip]
       color <- [Red, Blue, Yellow, Green] 
       return $ Card (action, color)
 
@@ -251,6 +253,7 @@ canPlaceCard (Card (r1, c1)) b =
 
 executeCardEffect :: MonadIO m => Board -> Card -> m Board
 executeCardEffect b (Card (ChangeColor c, _)) = return $ b {chosenColor=c}
+executeCardEffect b (Card (AddColorless (n, c), _)) = return $ b {chosenColor = c, addToPlayer=addToPlayer b + n}
 executeCardEffect b (Card (Add n, _))       = return $ b {addToPlayer=addToPlayer b + n}
 executeCardEffect b (Card (Number _, c))    = return $ b {chosenColor=c}
 executeCardEffect b (Card (Skip, _))        = return $ b {skipTurns=skipTurns b + 1}
@@ -409,6 +412,7 @@ parseCardMap =
         Card (ChangeColor _, _)  -> Map.insert "toBlue" (Card (ChangeColor Blue, Colorless)) $ Map.insert "toRed" (Card (ChangeColor Red, Colorless)) acc
         Card (EndTurn, _)        -> Map.insert "endturn" (Card (EndTurn, Null)) acc
         Card (SelfDraw, _)       -> Map.insert "draw" (Card (SelfDraw, Null)) acc
+        Card (AddColorless (n, _), _) -> Map.insert "waddRed" (Card (AddColorless (n, Red), Colorless)) acc
     ) Map.empty generateStartingDeck
     
 instance UnoGame TerminalUno where  
