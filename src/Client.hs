@@ -10,6 +10,8 @@ import System.Timeout
 import System.Process (callCommand)
 
 import Message
+import Types
+import Uno
 
 type PlayerID = MVar Int
 
@@ -20,7 +22,7 @@ startClient = do
     putStrLn "Attempting to connect..."
     playerID <- newEmptyMVar
     -- Use bracket to ensure proper cleanup
-    bracket (connect' host port) cleanup (flip handleConnection playerID)
+    bracket (connect' host port) cleanup (`handleConnection` playerID)
     where
         connect' host port = do
             addr <- resolve host port

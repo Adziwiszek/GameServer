@@ -9,24 +9,8 @@ import Data.Binary
 import Data.Int
 import System.IO
 
-data Player = PlayerA | PlayerB deriving (Eq, Generic)
-instance Show Player where
-  show PlayerA = "A"
-  show PlayerB = "B"
-instance Binary Player
+import Types
 
-newtype Board = Board [Maybe Player] deriving Generic
-instance Show Board where
-  show (Board board) = 
-    foldl (\acc (i, x) -> acc ++ " " ++
-      maybe " " show x ++
-      (if i `mod` 3 == 0 || i `mod` 3 == 1 
-        then " |" 
-        else 
-        if i < 8 then " \n-----------\n"
-        else "\n")) -- end of line 
-    "\n\n" $ zip [0..] board
-instance Binary Board
 
 {-data MessageType
   = Text
@@ -34,27 +18,6 @@ instance Binary Board
   | PlayerMove
   deriving (Generic, Show) -}
 
-data MessageContent
-  = Text String
-  | GameState Board
-  deriving (Generic, Show)
-
-data MessageTarget 
-  = All
-  | Normal -- don't send ones message to themselves
-  | Server -- don't send to players 
-  | ToPlayer Int -- send to a specific player
-  deriving (Generic, Show) 
-
-data Message = Message {
-  messageTarget :: MessageTarget,
-  content :: MessageContent,
-  senderID :: Int
-} deriving (Generic, Show)
-
-instance Binary MessageTarget
-instance Binary MessageContent
-instance Binary Message 
 
 _broadcast :: Chan Message -> MessageContent -> MessageTarget -> Int -> IO ()
 _broadcast chan msg targ sID = writeChan chan $ Message {

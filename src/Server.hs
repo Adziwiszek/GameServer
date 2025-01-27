@@ -11,10 +11,11 @@ import Data.Functor
 -- import qualified Data.Map as Map
 
 import Message
-import Game(runGame)
+import Types
+import Uno(runGame)
 
 type GameStarted = MVar Bool
-type Players = MVar [(Int, Chan Message, Handle)]
+type ServerPlayers = MVar [(Int, String, Chan Message, Handle)]
 type Turn = MVar Int
 
   
@@ -53,7 +54,7 @@ startServer = do
   putStrLn "Running server on localhost, port = 4242"
   mainLoop sock chan 0 gameStarted players turn
 
-mainLoop :: Socket -> Chan Message -> Int -> GameStarted -> Players -> Turn -> IO ()
+mainLoop :: Socket -> Chan Message -> Int -> GameStarted -> ServerPlayers -> Turn -> IO ()
 mainLoop sock chan msgNum gs players turn = do
   putStrLn "waiting for a connection..."
   conn <- accept sock
@@ -62,7 +63,7 @@ mainLoop sock chan msgNum gs players turn = do
   mainLoop sock chan (msgNum + 1) gs players turn
 
 
-runConn :: (Socket, SockAddr) -> Chan Message -> Int -> GameStarted -> Players -> Turn -> IO ()
+runConn :: (Socket, SockAddr) -> Chan Message -> Int -> GameStarted -> ServerPlayers -> Turn -> IO ()
 runConn (sock, _) chan msgNum gs players turn = do
   let playerID = msgNum
   commLine <- dupChan chan
@@ -70,9 +71,6 @@ runConn (sock, _) chan msgNum gs players turn = do
 
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
-  -- adding this players handle to the players list
-  modifyMVar_ players $ \pl -> return $ (playerID, inChan, hdl) : pl
-  sendStr hdl "INIT_ID" playerID
 
   sendStr hdl "Hi, what is your name?" playerID
   name <- fmap init (receiveMessage hdl <&> flip unpackStringMessage "default_name")
@@ -80,6 +78,10 @@ runConn (sock, _) chan msgNum gs players turn = do
   writeChan chan $ Message Normal (Text ("--> " ++ name ++ " entered chat.")) playerID
   sendStr hdl ("Welcome, " ++ name ++ "!") playerID
 
+
+  -- adding this players handle to the players list
+  modifyMVar_ players $ \pl -> return $ (playerID, name, inChan, hdl) : pl
+  sendStr hdl "INIT_ID" playerID
 
   -- fork off a thread for reading from the duplicated channel
   -- ten wątek jest odpowiedzialny za czytanie wiadomości z kanału 
@@ -102,7 +104,7 @@ runConn (sock, _) chan msgNum gs players turn = do
         --writeChan commLine $ Message Text All "Starting the game..." (-1)
         modifyMVar_ gs (\_ -> return True)
         _players <- readMVar players 
-        _ <- forkIO $ runGame chan _players turn
+        _ <- forkIO $ runGame chan _players 
         loop
       ':' : rest -> do
         putStrLn $ "command used: " ++ rest

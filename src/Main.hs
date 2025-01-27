@@ -14,6 +14,16 @@ data AppType
   | Uno
   | GraphicsClient
 
+main :: IO ()
+main = do
+  appType <- getArgs >>= parse
+  case appType of 
+    Server -> startServer
+    Client -> startClient
+    Uno     -> return ()
+    Tooltip -> return ()
+    GraphicsClient -> runSlots
+
 parse :: [String] -> IO AppType
 parse ["-h"] = do
   putStrLn "Usage: GameServer [-h] [\"server\"|\"client\"]"
@@ -34,12 +44,4 @@ parse _ = do
   putStrLn "Not supported."
   return Tooltip
 
-main :: IO ()
-main = do
-  appType <- getArgs >>= parse
-  case appType of 
-    Server -> startServer
-    Client -> startClient
-    Uno     -> runGame
-    Tooltip -> return ()
-    GraphicsClient -> runSlots
+

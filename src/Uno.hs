@@ -1,86 +1,17 @@
--- {-# LANGUAGE FlexibleContexts, FlexibleInstances, FunctionalDependencies #-}
--- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveGeneric #-}
--- {-# LANGUAGE InstanceSigs #-}
+module Uno (game, runGame, parseCards) where 
 
-module Uno (game, runGame) where 
-
-import GHC.Generics (Generic)
 import Data.List (find)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Control.Monad.Cont
 import Control.Monad.Random
+import System.IO
+import Control.Monad.Fix (fix)
+import Control.Concurrent
 -- import Control.Monad (when)
---import Message
 
-data CardColor
-  = Red
-  | Blue
-  | Yellow
-  | Green
-  | Colorless
-  | Null
-  deriving (Eq, Show)
-  
-data CardRole
-  = Number Int
-  | Add Int
-  | Skip
-  | Switch
-  | ChangeColor CardColor
-  | AddColorless (Int, CardColor)
-  | SelfDraw
-  | EndTurn
-  deriving (Eq, Show)
-
-newtype Card = Card (CardRole, CardColor) deriving (Eq, Show)
-
-data Direction = DLeft | DRight deriving Show
-
-newtype Score = Score Player deriving Show
-
-class Monad m => UnoGame m  where
-  getPlayerMove :: Int -> Board -> m [Card]
-
-{-class MonadState Board m => UnoState m where
-  getCurrentPlayer_ :: m Player
-  updateCurrentPlayer :: Player -> m ()-}
-
-data Player = Player
-  { playerID :: Int
-  , hand     :: [Card]
-  } deriving (Generic, Show)
-
--- zipper for players
-newtype Players = Players ([Player], [Player])
-
-data Board = Board {
-  boardPlayers     :: Players,
-  discardPile      :: [Card],
-  drawPile         :: [Card],
-  direction        :: Direction,
-  skipPlayers      :: [Int],
-  addToPlayer      :: Int,
-  skipTurns        :: Int,
-  canDraw          :: Bool,
-  canTransferSkip  :: Bool,
-  chosenColor      :: CardColor
-}
-
-instance Show Board where
-    show board = 
-        let playerStr = 
-                foldl 
-                    (\acc (Player {playerID=pid, hand=cs}) -> 
-                        acc ++ "\nID = " ++ show pid ++ ", hand = " ++ show cs)
-                    ""
-                    (let (Players (l, r)) = boardPlayers board in l ++ r)
-        in playerStr ++ 
-          "\nDraw pile = " ++ show (drawPile board) ++ 
-          "\nDiscard pile = " ++ show (discardPile board) ++ 
-          "\nDirection = " ++ show (direction board) ++
-          "\nTop color = " ++ show (chosenColor board)
+import Types
+import Message
 
 {-
 data GameMessage 
@@ -415,6 +346,18 @@ parseCardMap =
         Card (AddColorless (n, _), _) -> Map.insert "waddRed" (Card (AddColorless (n, Red), Colorless)) acc
     ) Map.empty generateStartingDeck
     
+
+
+parseCards :: String -> [Card]
+parseCards strCards = 
+    let cs = words strCards
+    in foldl
+        (\acc x -> case Map.lookup x parseCardMap of
+            Just c -> c : acc
+            Nothing -> acc)
+        []
+        cs
+
 instance UnoGame TerminalUno where  
   getPlayerMove pid' b' = TerminalUno $ do
     getStrMove pid' b'
@@ -442,24 +385,30 @@ instance UnoGame TerminalUno where
               putStrLn $ "your move = " ++ show cards
               return cards 
 
-        parseCards strCards = 
-            let cs = words strCards
-            in foldl
-                (\acc x -> case Map.lookup x parseCardMap of
-                    Just c -> c : acc
-                    Nothing -> acc)
-                []
-                cs
 
-createPlayer :: Int -> Player
-createPlayer pid = Player {playerID=pid, hand=[]}
+-- createPlayer :: Int -> Handle -> Chan Message -> String -> Player
+-- createPlayer pid handle = Player {playerID=pid, hand=[]}
 
-runGame :: IO ()
-runGame  = do
-    let players = Players ([], [createPlayer 0, createPlayer 1, createPlayer 2, createPlayer 3])
+runGame :: OutChan -> [(Int, String, Chan Message, Handle)] ->  IO ()
+runGame outchan players = do
+    {-let players = Players ([], [createPlayer 0, createPlayer 1, createPlayer 2, createPlayer 3])
     let game' :: TerminalUno (Score, Board)
         game' = game players
-    (result, finalBoard) <- runTerminalUno game'
-    putStrLn $ "final board: " ++ show finalBoard
-    putStrLn $ "Score = " ++ show result
+    (result, finalBoard) <- runTerminalUno game'-}
+    -- putStrLn $ "final board: " ++ show finalBoard
+    -- putStrLn $ "Score = " ++ show result
+    return ()
+
     
+type InChan = Chan Message
+type OutChan = Chan Message
+-- type Players = [(Int, Chan Message, Handle)]
+type Turn = MVar Int
+newtype NetworkGame x = NetworkGame
+  { runNetworkGame :: OutChan -> Players ->  IO x
+  }
+
+{-instance UnoGame NetworkGame where  
+  getPlayerMove pid' b' = NetworkGame $ \outchan players turn -> do-}
+    
+
