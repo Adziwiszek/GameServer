@@ -141,5 +141,10 @@ data SBoard = SBoard
   , discardedCard :: Card
   , sdirection    :: Direction
   , myHand        :: [Card]
-  } deriving (Generic, Show)
+  } deriving (Generic)
 instance Binary SBoard
+
+instance Show SBoard where
+  show (SBoard players topcard direction hand) = ""
+
+

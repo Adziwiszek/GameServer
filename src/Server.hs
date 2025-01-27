@@ -12,7 +12,7 @@ import Data.Functor
 
 import Message
 import Types
-import Uno(runGame)
+import Uno (runNetworkGame)
 
 type GameStarted = MVar Bool
 type ServerPlayers = MVar [(Int, String, Chan Message, Handle)]
@@ -71,17 +71,17 @@ runConn (sock, _) chan msgNum gs players turn = do
 
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
+  -- adding this players handle to the players list
+  sendStr hdl "INIT_ID" playerID
 
   sendStr hdl "Hi, what is your name?" playerID
   name <- fmap init (receiveMessage hdl <&> flip unpackStringMessage "default_name")
   putStrLn $ "client name: " ++ name ++ ", client ID = " ++ show playerID  
+  modifyMVar_ players $ \pl -> return $ (playerID, name, inChan, hdl) : pl
+
   writeChan chan $ Message Normal (Text ("--> " ++ name ++ " entered chat.")) playerID
   sendStr hdl ("Welcome, " ++ name ++ "!") playerID
 
-
-  -- adding this players handle to the players list
-  modifyMVar_ players $ \pl -> return $ (playerID, name, inChan, hdl) : pl
-  sendStr hdl "INIT_ID" playerID
 
   -- fork off a thread for reading from the duplicated channel
   -- ten wątek jest odpowiedzialny za czytanie wiadomości z kanału 
@@ -104,7 +104,7 @@ runConn (sock, _) chan msgNum gs players turn = do
         --writeChan commLine $ Message Text All "Starting the game..." (-1)
         modifyMVar_ gs (\_ -> return True)
         _players <- readMVar players 
-        _ <- forkIO $ runGame chan _players 
+        _ <- forkIO $ runNetworkGame chan _players 
         loop
       ':' : rest -> do
         putStrLn $ "command used: " ++ rest

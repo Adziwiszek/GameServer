@@ -1,4 +1,4 @@
-module Uno (game, runGame, parseCards) where 
+module Uno (game, runGame, runNetworkGame, parseCards) where 
 
 import Data.List (find)
 import Data.Map (Map)
@@ -367,7 +367,8 @@ instance UnoGame TerminalUno where
           putStrLn $ "\nBoard :" ++ show b
           putStrLn $ "Can draw = " ++ show (canDraw b)
           putStrLn $ "put your move player " ++ show pid
-          when (skipTurns b > 0) $ putStrLn $ "you are facing " ++ show (skipTurns b) ++ " skipped turns"
+          when (skipTurns b > 0) $ putStrLn $
+              "you are facing " ++ show (skipTurns b) ++ " skipped turns"
           when (member pid $ skipPlayers b) $ putStrLn "you are skipping a turn"
           let toDraw = addToPlayer b
           when (toDraw > 0) $ putStrLn $ "you have " ++ show toDraw ++ " cards to draw"
@@ -386,11 +387,12 @@ instance UnoGame TerminalUno where
               return cards 
 
 
--- createPlayer :: Int -> Handle -> Chan Message -> String -> Player
--- createPlayer pid handle = Player {playerID=pid, hand=[]}
+createPlayer :: Int -> Handle -> Chan Message -> String -> Player
+createPlayer pid han chan name = Player pid name [] han chan 
 
 runGame :: OutChan -> [(Int, String, Chan Message, Handle)] ->  IO ()
-runGame outchan players = do
+runGame outchan serverPlayers = do
+    let players = map (\(pid, name, chan, handle) -> createPlayer pid handle chan name) serverPlayers
     {-let players = Players ([], [createPlayer 0, createPlayer 1, createPlayer 2, createPlayer 3])
     let game' :: TerminalUno (Score, Board)
         game' = game players
@@ -404,11 +406,42 @@ type InChan = Chan Message
 type OutChan = Chan Message
 -- type Players = [(Int, Chan Message, Handle)]
 type Turn = MVar Int
-newtype NetworkGame x = NetworkGame
-  { runNetworkGame :: OutChan -> Players ->  IO x
+newtype NetworkUno x = NetworkUno
+  { runNetworkUno :: OutChan -> Players ->  IO x
   }
 
-{-instance UnoGame NetworkGame where  
-  getPlayerMove pid' b' = NetworkGame $ \outchan players turn -> do-}
+instance Functor NetworkUno where
+  fmap f (NetworkUno io) = NetworkUno $ \outchan players -> fmap f (io outchan players)
+
+instance Applicative NetworkUno where
+  pure x = NetworkUno $ \_ _ -> pure x
+  NetworkUno f <*> NetworkUno x = NetworkUno $ \outchan players 
+    -> f outchan players <*> x outchan players
+
+instance Monad NetworkUno where
+  NetworkUno x >>= f = NetworkUno $ \outchan players -> do
+    result <- x outchan players 
+    runNetworkUno (f result) outchan players 
+
+instance MonadIO NetworkUno where
+    liftIO action = NetworkUno $ \outchan players -> action
+
+instance UnoGame NetworkUno where  
+  getPlayerMove pid' b' = NetworkUno $ \outchan players -> do
+     
+    return []
     
+    
+
+runNetworkGame :: OutChan -> [(Int, String, Chan Message, Handle)] ->  IO ()
+runNetworkGame outchan serverPlayers = do
+    putStrLn "starting game!!!"
+    let pl = map (\(pid, name, chan, handle) -> createPlayer pid handle chan name) serverPlayers
+    let players = Players ([], pl)
+    let game' :: NetworkUno (Score, Board)
+        game' = game players
+    (result, finalBoard) <- runNetworkUno game' outchan players
+    -- putStrLn $ "final board: " ++ show finalBoard
+    -- putStrLn $ "Score = " ++ show result
+    return ()
 
