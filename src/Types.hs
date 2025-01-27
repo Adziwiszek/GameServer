@@ -79,10 +79,12 @@ class Monad m => UnoGame m  where
 data Player = Player
   { playerID :: Int
   , playerName :: String
-  , hand     :: [Card]
+  , playerHand     :: [Card]
   , playerHandle :: Handle
   , playerChannel :: Chan Message
   } deriving (Generic)
+instance Show Player where
+  show (Player _ name _ _ _) = "Player: " ++ name ++ " "
 
 {- TODO
  -
@@ -112,7 +114,7 @@ instance Show Board where
     show board = 
         let playerStr = 
                 foldl 
-                    (\acc (Player {playerID=pid, hand=cs}) -> 
+                    (\acc (Player {playerID=pid, playerHand=cs}) -> 
                         acc ++ "\nID = " ++ show pid ++ ", hand = " ++ show cs)
                     ""
                     (let (Players (l, r)) = boardPlayers board in l ++ r)
@@ -127,8 +129,10 @@ instance Show Board where
 data SPlayer = SPlayer
   { splayerName :: String
   , snumOfCards :: Int
-  } deriving (Generic, Show)
+  } deriving (Generic)
 instance Binary SPlayer
+instance Show SPlayer where
+  show (SPlayer name cards) = "Player: " ++ show name ++ ", cards left: " ++ show cards 
 
 newtype SPlayers = SPlayers [SPlayer] deriving (Show, Generic)
 instance Binary SPlayers
@@ -141,10 +145,18 @@ data SBoard = SBoard
   , discardedCard :: Card
   , sdirection    :: Direction
   , myHand        :: [Card]
+  , currentPlayerName :: String
   } deriving (Generic)
 instance Binary SBoard
 
 instance Show SBoard where
-  show (SBoard players topcard direction hand) = ""
+  show (SBoard (SPlayers players) topcard dir hand curName) = flip joinStr " " $ 
+    ("Current player = " ++ curName ++ "\n") :
+    map (\p -> show p ++ "\n") players ++
+    [ "Top card: " ++ show topcard ++ "\n"
+    , "Direction: " ++ show dir ++ "\n"
+    , "Your hand: " ++ show hand
+    ]
 
-
+joinStr :: [String] -> String -> String
+joinStr xs space = foldl (\acc word -> acc ++ space ++ word) "" xs

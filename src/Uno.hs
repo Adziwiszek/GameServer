@@ -127,10 +127,7 @@ initBoard (Players (left, right)) = do
   let allPlayers = left ++ right 
   g <- getStdGen 
   let cards = evalRand (shuffle generateStartingDeck) g
-  let (finalPlayers, rest) = foldl (\(acc, cardsLeft) (Player {playerID=pid, hand=_}) -> 
-        let (myCards, cardsLeft') = takeOut startingDeckSize cardsLeft in 
-        (Player {playerID=pid, hand=myCards} : acc, cardsLeft')) 
-        ([], cards) allPlayers
+  let (finalPlayers, rest) = foldl setupPlayers ([], cards) allPlayers
   return $ Board {boardPlayers    = Players ([], finalPlayers), 
                   discardPile     = [head rest],
                   drawPile        = tail rest,
@@ -142,6 +139,13 @@ initBoard (Players (left, right)) = do
                   canTransferSkip = True,
                   chosenColor     = getCardColor $ head rest
                   } 
+
+  where
+    setupPlayers (acc, cardsLeft) player =
+        let (myCards, cardsLeft') = takeOut startingDeckSize cardsLeft in 
+        ( player {playerHand=myCards} : acc
+        , cardsLeft'
+        )
 
 
 reshuffleDeck :: MonadIO m => Board -> m Board
@@ -168,19 +172,19 @@ addToCurrentPlayer _board n = do
       return $ board {boardPlayers = newPlayers, drawPile = draw}
     _ -> error "Impossible."
   where
-    giveCardsToPlayer player cards = player {hand = cards ++ hand player}
+    giveCardsToPlayer player cards = player {playerHand = cards ++ playerHand player}
       
 removeCardsFromPlayer :: Board -> [Card] -> Board 
 removeCardsFromPlayer board move = 
     let (Players (left, p:right)) = boardPlayers board 
-    in let (Player {playerID=pid, hand=cards}) = p
+    in let (Player {playerID=pid, playerHand=cards}) = p
     in let newHand = foldl 
             (\acc c -> 
                 if cardMember c move 
                 then acc
                 else c : acc) 
             [] cards
-    in board {boardPlayers=Players (left, Player {playerID=pid, hand=newHand}:right)}
+    in board {boardPlayers=Players (left, Player {playerID=pid, playerHand=newHand}:right)}
 
 currentPlayerWaits :: Board -> Bool
 currentPlayerWaits board = 
@@ -255,7 +259,7 @@ processRegularMove move board = do
         Nothing -> return Nothing
         Just b  -> return $ Just $ nextPlayer b
   where 
-    hasCards cards b = all (\c -> cardMember c (hand $ getCurrentPlayer b)) cards
+    hasCards cards b = all (\c -> cardMember c (playerHand $ getCurrentPlayer b)) cards
 
 processCards :: MonadIO m => [Card] -> Board -> m (Maybe Board)
 processCards [] board = return $ Just $ board {canDraw = True}
@@ -322,10 +326,32 @@ game players = do
     lookForWinner b = 
         find 
             (\pl -> 
-                let Player {playerID=_, hand=cs} = pl 
+                let Player {playerID=_, playerHand=cs} = pl 
                 in length cs == 0) 
             (let Players (l, r) = boardPlayers b in l ++ r)  
+
+
+boardToSBoard :: Board -> SBoard
+boardToSBoard b = 
+  let currentPlayer = getCurrentPlayer b in
+  let pid = playerID currentPlayer in 
+  let (Players (left, right)) = boardPlayers b in
+  let otherPlayers_ :: SPlayers
+      otherPlayers_ =  SPlayers $ map toSPlayer $ filter (filterOutCurrent pid) left ++ right  in
+  let discardedCard_ = head $ discardPile b in 
+  let myHand_ = playerHand currentPlayer in
+  let sdirection_ = direction b in
+  let myName = playerName currentPlayer in
+  SBoard otherPlayers_ discardedCard_ sdirection_ myHand_  myName
        
+  where 
+    filterOutCurrent :: Int -> Player -> Bool
+    filterOutCurrent pid (Player pid' _ _ _ _) = pid' /= pid
+
+    toSPlayer (Player _ name hand _ _) = SPlayer 
+      { splayerName = name
+      , snumOfCards = length hand
+      }
 
 newtype TerminalUno x = TerminalUno { runTerminalUno :: IO x }
 
@@ -441,10 +467,21 @@ instance MonadIO NetworkUno where
     liftIO action = NetworkUno $ \outchan players -> action
 
 instance UnoGame NetworkUno where  
-  getPlayerMove pid' b' = NetworkUno $ \outchan players -> do
-    let currentPlayer = getCurrentPlayer players 
+  getPlayerMove pid' board = NetworkUno $ \outchan players -> do
+    putStrLn $ "Player's " ++ show pid' ++ " turn!"
+    let currentPlayer = getCurrentPlayer board 
+    let (Player pid name hand handle chan) = currentPlayer
+    broadcastOutGameState (boardToSBoard board) outchan
+    _ <- getLine
+     
     return []
-    
+  
+    where
+    broadcastOutGameState :: SBoard -> OutChan -> IO ()
+    broadcastOutGameState sboard outchan = do
+      _broadcast outchan 
+        (GameState sboard)  
+        All (-1)
     
 
 runNetworkGame :: OutChan -> [(Int, String, Chan Message, Handle)] ->  IO ()
