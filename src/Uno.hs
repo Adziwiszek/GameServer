@@ -19,6 +19,20 @@ data GameMessage
   | NoSuchCard
 -}
 
+class GetBoardInfo a where
+  getCurrentPlayer :: a -> Player
+
+instance GetBoardInfo Board where
+  getCurrentPlayer board = 
+    case boardPlayers board of
+      Players (left, []) -> getCurrentPlayer $ board 
+          { boardPlayers=Players ([], reverse left) }
+      Players (_, right) -> head right
+
+instance GetBoardInfo Players where
+  getCurrentPlayer (Players (left, [])) = getCurrentPlayer $ Players ([], reverse left)
+  getCurrentPlayer (Players (_, right)) = head right
+
 startingDeckSize :: Int 
 startingDeckSize = 3
 
@@ -63,11 +77,11 @@ cardsOfSameRole (x:xs) = check xs x
     check [] _ = True
     check (y:ys) c = getCardRole y == getCardRole c && check ys y
 
-getCurrentPlayer :: Board -> Player
+{-getCurrentPlayer :: Board -> Player
 getCurrentPlayer board = 
   case boardPlayers board of
     Players (left, []) -> getCurrentPlayer $ board {boardPlayers=Players ([], reverse left)}
-    Players (_, right) -> head right
+    Players (_, right) -> head right-}
 
 getNextPlayer :: Board -> Player
 getNextPlayer board = getCurrentPlayer $ nextPlayer board
@@ -428,7 +442,7 @@ instance MonadIO NetworkUno where
 
 instance UnoGame NetworkUno where  
   getPlayerMove pid' b' = NetworkUno $ \outchan players -> do
-     
+    let currentPlayer = getCurrentPlayer players 
     return []
     
     
