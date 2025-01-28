@@ -101,13 +101,11 @@ resolve host port = do
 parseUserMessage :: String -> IO (Maybe MessageContent)
 parseUserMessage "" = return Nothing
 parseUserMessage msg = do
-  putStrLn $ "Parsing message: " ++ msg
   let msgWords = words msg
   case msgWords of
     [] -> return $ Just $ Text ""
     "|" : rest -> do
       let cards = parseCards $ joinStr rest " "
-      putStrLn $ "You just played: " ++ show cards
       return $ Just $ GameMove cards
     _ -> do
       return $ Just $ Text $ msg ++ " "

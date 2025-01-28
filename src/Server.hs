@@ -109,9 +109,9 @@ runConn (sock, _) chan msgNum gs players turn = do
             _players <- readMVar players 
             _ <- forkIO $ runNetworkGame chan _players 
             loop
-          ':' : rest -> do
+          {-':' : rest -> do
             putStrLn $ "command used: " ++ rest
-            loop
+            loop-}
           _ -> do
             currentGS <- readMVar gs
             unless currentGS 
@@ -119,14 +119,10 @@ runConn (sock, _) chan msgNum gs players turn = do
                 $ Message Normal (Text (name ++ ": " ++ line)) (senderID msg)
             loop
       GameMove m -> do
-        putStrLn $ "players move = " ++ show m
         currentGS <- readMVar gs
         when currentGS $ do
-          currentTurn <- readMVar turn
-          putStrLn "Dupa 1. received message from client during game"
-          when (currentTurn == playerID) 
-            $ writeChan inChan 
-            $ Message Server (GameMove m) playerID
+          -- currentTurn <- readMVar turn
+          writeChan inChan (Message Server (GameMove m) playerID)
         loop
       GameState _ -> loop
 

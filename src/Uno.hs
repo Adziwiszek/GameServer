@@ -177,14 +177,14 @@ addToCurrentPlayer _board n = do
 removeCardsFromPlayer :: Board -> [Card] -> Board 
 removeCardsFromPlayer board move = 
     let (Players (left, p:right)) = boardPlayers board 
-    in let (Player {playerID=pid, playerHand=cards}) = p
+    in let cards = playerHand p
     in let newHand = foldl 
             (\acc c -> 
                 if cardMember c move 
                 then acc
                 else c : acc) 
             [] cards
-    in board {boardPlayers=Players (left, Player {playerID=pid, playerHand=newHand}:right)}
+    in board {boardPlayers=Players (left, p {playerHand=newHand}:right)}
 
 currentPlayerWaits :: Board -> Bool
 currentPlayerWaits board = 
@@ -464,42 +464,35 @@ instance Monad NetworkUno where
     runNetworkUno (f result) outchan players 
 
 instance MonadIO NetworkUno where
-    liftIO action = NetworkUno $ \outchan players -> action
+    liftIO action = NetworkUno $ \_ _ -> action
 
 instance UnoGame NetworkUno where  
-  getPlayerMove _ board = NetworkUno $ \outchan players -> do
-    let currentPlayer = getCurrentPlayer board 
-    let (Player pid name hand handle inchan) = currentPlayer
+  getPlayerMove _ board = NetworkUno $ \outchan _ -> do
+    let (Player pid _ _ _ inchan) = getCurrentPlayer board 
 
     broadcastOutGameState (boardToSBoard board) outchan
 
      
-    {-move <- fix $ \loop -> do
+    move <- fix $ \loop -> do
       testMsg <- readChan inchan 
-      putStrLn "received some message.."
-      if senderID testMsg == pid then do
-        maybe loop return (processUserMsg $ content testMsg)
+      if senderID testMsg == pid 
+      then maybe loop return (processUserMsg $ content testMsg)
       else do
         _broadcast outchan (Text "Move from wrong player!") All 0
         loop
-
-    putStrLn $ "Users move = " ++ show move-}
-
-    _ <- getLine
-
-    return []
+    putStrLn $ "move  = " ++ show move
+    return move
   
     where
     broadcastOutGameState :: SBoard -> OutChan -> IO ()
     broadcastOutGameState sboard outchan = do
-      _broadcast outchan 
-        (GameState sboard)  
-        All (-1)
+      _broadcast outchan (GameState sboard) All (-1)
 
     processUserMsg :: MessageContent -> Maybe [Card]
+    processUserMsg (GameMove []) = Nothing
     processUserMsg (GameMove move) = Just move
-    processUserMsg (Text _) = Nothing
-    processUserMsg (GameState _) = Nothing
+    processUserMsg _ = Nothing
+
     
 
 runNetworkGame :: OutChan -> [(Int, String, Chan Message, Handle)] ->  IO ()
