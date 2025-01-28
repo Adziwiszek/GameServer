@@ -65,20 +65,28 @@ handleConnection (_, hdl) playerID = do
         print gs
         loop
       Text s -> do 
-          putStrLn s
-          loop
+        putStrLn s
+        loop
+      GameMove _ -> do
+        putStrLn "dupa kozy"
+        loop
 
   handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
     msg <- getLine
     myID <- readMVar playerID
-    sendStr hdl (msg ++ " ") myID 
-    case msg of
-      "quit" -> do
-        result <- timeout 500000 $ readChan messageChan
-        case result of
-          Nothing -> putStrLn "Server not responding. Forcing disconnect..."
-          Just _ -> return ()
-      _ -> loop
+    parsedMsg <- parseUserMessage msg
+    case parsedMsg of 
+      Nothing -> loop 
+      Just m -> do
+        sendToServer hdl m myID
+        -- sendStr hdl (msg ++ " ") myID 
+        case msg of
+          "quit" -> do
+            result <- timeout 500000 $ readChan messageChan
+            case result of
+              Nothing -> putStrLn "Server not responding. Forcing disconnect..."
+              Just _ -> return ()
+          _ -> loop
 
   killThread readerThread
   hClose hdl
@@ -87,3 +95,20 @@ resolve :: String -> String -> IO AddrInfo
 resolve host port = do
     let hints = defaultHints { addrSocketType = Stream }
     head <$> getAddrInfo (Just hints) (Just host) (Just port)
+
+-- utils
+
+parseUserMessage :: String -> IO (Maybe MessageContent)
+parseUserMessage "" = return Nothing
+parseUserMessage msg = do
+  putStrLn $ "Parsing message: " ++ msg
+  let msgWords = words msg
+  case msgWords of
+    [] -> return $ Just $ Text ""
+    "|" : rest -> do
+      let cards = parseCards $ joinStr rest " "
+      putStrLn $ "You just played: " ++ show cards
+      return $ Just $ GameMove cards
+    _ -> do
+      return $ Just $ Text $ msg ++ " "
+

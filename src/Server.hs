@@ -86,7 +86,7 @@ runConn (sock, _) chan msgNum gs players turn = do
   -- fork off a thread for reading from the duplicated channel
   -- ten wątek jest odpowiedzialny za czytanie wiadomości z kanału 
   -- i przesyłanie ich do klienta (jeśli wiadomość nie pochodzi od niego)
-  reader <- forkIO $ fix $ \loop -> do
+  writerThread <- forkIO $ fix $ \loop -> do
     msg <- readChan commLine
     sendOutMsg hdl msg playerID
     loop
@@ -95,29 +95,45 @@ runConn (sock, _) chan msgNum gs players turn = do
   -- ich do reszty użytkowników
   handle (\(SomeException e) -> putStrLn $ "Server error: " ++ show e) $ fix $ \loop -> do
     msg <- receiveMessage hdl
-    let line = init (unpackStringMessage msg "ERR")
-    case line of
-      "quit" -> do
-        sendStr hdl "Bye!" playerID
-        putStrLn $ "user " ++ name ++ " is quiting.."
-      ':' : "start" -> do
-        --writeChan commLine $ Message Text All "Starting the game..." (-1)
-        modifyMVar_ gs (\_ -> return True)
-        _players <- readMVar players 
-        _ <- forkIO $ runNetworkGame chan _players 
-        loop
-      ':' : rest -> do
-        putStrLn $ "command used: " ++ rest
-        loop
-      _ -> do
+    case content msg of
+      Text _ -> do
+        let line = init (unpackStringMessage msg "ERR")
+        case line of
+          "quit" -> do
+            -- sendStr hdl "Bye!" playerID
+            writeChan commLine $ Message (ToPlayer playerID) (Text "Bye!") (-1) 
+            putStrLn $ "user " ++ name ++ " is quiting.."
+          ':' : "start" -> do
+            --writeChan commLine $ Message Text All "Starting the game..." (-1)
+            modifyMVar_ gs (\_ -> return True)
+            _players <- readMVar players 
+            _ <- forkIO $ runNetworkGame chan _players 
+            loop
+          ':' : rest -> do
+            putStrLn $ "command used: " ++ rest
+            loop
+          _ -> do
+            currentGS <- readMVar gs
+            unless currentGS 
+                $ writeChan commLine 
+                $ Message Normal (Text (name ++ ": " ++ line)) (senderID msg)
+            loop
+      GameMove m -> do
+        putStrLn $ "players move = " ++ show m
         currentGS <- readMVar gs
-        if currentGS then do
+        when currentGS $ do
           currentTurn <- readMVar turn
-          when (currentTurn == playerID) $ writeChan inChan $ Message Server (Text line) playerID
-        else
-          writeChan commLine $ Message Normal (Text (name ++ ": " ++ line)) (senderID msg)
+          putStrLn "Dupa 1. received message from client during game"
+          when (currentTurn == playerID) 
+            $ writeChan inChan 
+            $ Message Server (GameMove m) playerID
         loop
+      GameState _ -> loop
 
-  killThread reader                      
+
+  killThread writerThread                      
   writeChan chan $ Message Normal (Text ("<-- " ++ name ++ " left.")) playerID
   hClose hdl                             
+
+    
+

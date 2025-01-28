@@ -467,13 +467,26 @@ instance MonadIO NetworkUno where
     liftIO action = NetworkUno $ \outchan players -> action
 
 instance UnoGame NetworkUno where  
-  getPlayerMove pid' board = NetworkUno $ \outchan players -> do
-    putStrLn $ "Player's " ++ show pid' ++ " turn!"
+  getPlayerMove _ board = NetworkUno $ \outchan players -> do
     let currentPlayer = getCurrentPlayer board 
-    let (Player pid name hand handle chan) = currentPlayer
+    let (Player pid name hand handle inchan) = currentPlayer
+
     broadcastOutGameState (boardToSBoard board) outchan
-    _ <- getLine
+
      
+    {-move <- fix $ \loop -> do
+      testMsg <- readChan inchan 
+      putStrLn "received some message.."
+      if senderID testMsg == pid then do
+        maybe loop return (processUserMsg $ content testMsg)
+      else do
+        _broadcast outchan (Text "Move from wrong player!") All 0
+        loop
+
+    putStrLn $ "Users move = " ++ show move-}
+
+    _ <- getLine
+
     return []
   
     where
@@ -482,6 +495,11 @@ instance UnoGame NetworkUno where
       _broadcast outchan 
         (GameState sboard)  
         All (-1)
+
+    processUserMsg :: MessageContent -> Maybe [Card]
+    processUserMsg (GameMove move) = Just move
+    processUserMsg (Text _) = Nothing
+    processUserMsg (GameState _) = Nothing
     
 
 runNetworkGame :: OutChan -> [(Int, String, Chan Message, Handle)] ->  IO ()

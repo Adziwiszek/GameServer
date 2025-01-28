@@ -15,7 +15,8 @@ import Data.Binary
 data MessageContent
   = Text String
   | GameState SBoard
-  deriving (Generic)
+  | GameMove [Card]
+  deriving (Generic, Show)
 
 data MessageTarget 
   = All
@@ -24,11 +25,12 @@ data MessageTarget
   | ToPlayer Int -- send to a specific player
   deriving (Generic, Show) 
 
-data Message = Message {
-  messageTarget :: MessageTarget,
-  content :: MessageContent,
-  senderID :: Int
-} deriving (Generic)
+data Message = Message 
+  { messageTarget :: MessageTarget
+  , content :: MessageContent
+  , senderID :: Int
+  } 
+  deriving (Generic, Show)
 
 instance Binary MessageTarget
 instance Binary MessageContent
@@ -152,11 +154,15 @@ instance Binary SBoard
 instance Show SBoard where
   show (SBoard (SPlayers players) topcard dir hand curName) = flip joinStr " " $ 
     ("Current player = " ++ curName ++ "\n") :
-    map (\p -> show p ++ "\n") players ++
+    map showNewline players ++
     [ "Top card: " ++ show topcard ++ "\n"
     , "Direction: " ++ show dir ++ "\n"
-    , "Your hand: " ++ show hand
-    ]
+    , "Your hand: \n" 
+    ] ++ 
+    map showNewline hand
+
+    where 
+    showNewline x = show x ++ "\n"
 
 joinStr :: [String] -> String -> String
 joinStr xs space = foldl (\acc word -> acc ++ space ++ word) "" xs

@@ -68,7 +68,15 @@ smsg str mId = Message {
 sendStr :: Handle -> String -> Int -> IO ()
 sendStr hdl str mId = sendMessage hdl $ smsg str mId
 
+sendToServer :: Handle -> MessageContent -> Int -> IO ()
+sendToServer hdl cont pId = do
+  -- putStrLn "TESTING!!!"
+  -- putStrLn $ "Sending message: " ++ show cont
+  sendMessage hdl $ Message Server cont pId
+
 unpackStringMessage :: Message -> String -> String 
 unpackStringMessage msg def = process $ content msg where
   process (GameState _) = def
   process (Text s)      = s
+  process (GameMove _)  = def
+
