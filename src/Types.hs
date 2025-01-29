@@ -143,20 +143,25 @@ newtype SScore = SScore SPlayer deriving (Show, Generic)
 instance Binary SScore
 
 data SBoard = SBoard 
-  { otherPlayers  :: SPlayers
+  { myID          :: Int
+  , myName        :: String
+  , otherPlayers  :: SPlayers
   , discardedCard :: Card
   , sdirection    :: Direction
   , myHand        :: [Card]
   , currentPlayerName :: String
+  , cardsToDraw :: Int
   } deriving (Generic)
 instance Binary SBoard
 
 instance Show SBoard where
-  show (SBoard (SPlayers players) topcard dir hand curName) = flip joinStr " " $ 
-    ("Current player = " ++ curName ++ "\n") :
+  show (SBoard _ name (SPlayers players) topcard dir hand curName ndraw) = flip joinStr " " $ 
+    [("Current player = " ++ curName ++ "\n")] ++
+    [(if ndraw > 0 then "they have to draw " ++ show ndraw ++ " cards\n" else "")] ++
     map showNewline players ++
     [ "Top card: " ++ show topcard ++ "\n"
     , "Direction: " ++ show dir ++ "\n"
+    , "Your name: " ++ name ++ "\n"
     , "Your hand: \n" 
     ] ++ 
     map showNewline hand

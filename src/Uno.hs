@@ -1,4 +1,4 @@
-module Uno (game, runGame, runNetworkGame, parseCards) where 
+module Uno (game, runNetworkGame, parseCards) where 
 
 import Data.List (find)
 import Data.Map (Map)
@@ -6,7 +6,7 @@ import qualified Data.Map as Map
 import Control.Monad.Cont
 import Control.Monad.Random
 import System.IO
-import Control.Monad.Fix (fix)
+-- import Control.Monad.Fix (fix)
 import Control.Concurrent
 -- import Control.Monad (when)
 
@@ -34,10 +34,9 @@ instance GetBoardInfo Players where
   getCurrentPlayer (Players (_, right)) = head right
 
 startingDeckSize :: Int 
-startingDeckSize = 3
+startingDeckSize = 5
 
 remove :: Eq a => a -> [a] -> [a]
-remove _ [] = []
 remove e xs = rm xs []
   where 
     rm [] _ = xs
@@ -65,10 +64,12 @@ getCardColor (Card (_, c)) = c
 getTopCard :: Board -> Card
 getTopCard = head . discardPile
 
+{-
 getTopColor :: Board -> CardColor
 getTopColor b = case getCardColor $ getTopCard b of
   Colorless -> chosenColor b
   c         -> c
+-}
 
 cardsOfSameRole :: [Card] -> Bool
 cardsOfSameRole [] = False
@@ -83,8 +84,10 @@ getCurrentPlayer board =
     Players (left, []) -> getCurrentPlayer $ board {boardPlayers=Players ([], reverse left)}
     Players (_, right) -> head right-}
 
+{-
 getNextPlayer :: Board -> Player
 getNextPlayer board = getCurrentPlayer $ nextPlayer board
+-}
 
 nextPlayer :: Board -> Board
 nextPlayer board = case direction board of 
@@ -101,12 +104,27 @@ nextPlayer board = case direction board of
       Players ([], right) -> b {boardPlayers = Players (tail $ reverse right, [last right])}
       Players (l : left, right) -> b {boardPlayers = Players (left, l : right)}
   
+getAllPlayersList :: Board -> [Player]
+getAllPlayersList board = 
+  let (Players (l, r)) = boardPlayers board 
+  in reverse l ++ r
+
+getPlayerWithID :: Board -> Int -> Player
+getPlayerWithID board pid = 
+  let (Players (l, r)) = boardPlayers board
+  in findPlayer (l ++ r)
+
+  where
+    findPlayer [] = undefined
+    findPlayer (p : ps) = if playerID p == pid
+      then p
+      else findPlayer ps
 
 generateStartingDeck :: [Card]
-generateStartingDeck = helper ++ {- [Card(ChangeColor Null, Colorless) | _ <- [1..4]] ++ -} [Card(AddColorless (4, Null), Colorless) | _ <- [1..10]]
+generateStartingDeck = helper ++ [Card(ChangeColor Null, Colorless) | _ <- ([1..2] :: [Int])] ++ [Card(AddColorless (4, Null), Colorless) | _ <- ([1..2] :: [Int])]
   where 
     helper = do
-      action <- [Number i | i <- [0..4]] -- ++ [Switch, Skip]
+      action <- [Number i | i <- [0..9]] ++ [Add 2]
       color <- [Red, Blue, Yellow, Green] 
       return $ Card (action, color)
 
@@ -176,7 +194,7 @@ addToCurrentPlayer _board n = do
       
 removeCardsFromPlayer :: Board -> [Card] -> Board 
 removeCardsFromPlayer board move = 
-    let (Players (left, p:right)) = boardPlayers board 
+    let (left, p, right) = unpackPlayers $ boardPlayers board 
     in let cards = playerHand p
     in let newHand = foldl 
             (\acc c -> 
@@ -185,6 +203,10 @@ removeCardsFromPlayer board move =
                 else c : acc) 
             [] cards
     in board {boardPlayers=Players (left, p {playerHand=newHand}:right)}
+
+  where 
+    unpackPlayers (Players (left, p:right)) = (left, p, right)
+    unpackPlayers _ = undefined
 
 currentPlayerWaits :: Board -> Bool
 currentPlayerWaits board = 
@@ -230,8 +252,8 @@ processSelfDraw board
   | not (canDraw board) && not (currentPlayerWaits board) = return Nothing
   | otherwise = do
       let board' = board {canDraw = False}
-      let cardsToDraw = max 1 (addToPlayer board')
-      drawnBoard <- addToCurrentPlayer board' cardsToDraw
+      let toDraw = max 1 (addToPlayer board')
+      drawnBoard <- addToCurrentPlayer board' toDraw
       return $ Just $ drawnBoard {addToPlayer = 0}
 
 processEndTurn :: MonadIO m => Board -> m (Maybe Board)
@@ -301,11 +323,6 @@ game players = do
   where         
     play :: (MonadIO m, UnoGame m) => Board -> m (Score, Board)
     play board = do
-      -- move is a list of cards that the player played
-      -- check if player chose to pick a card, they can then play it or pass
-      -- check if player before added cards, current player can now 
-      -- take those cards or play add card to give to the next player
-      -- we check if a move is legal
       let currentPlayer = getCurrentPlayer board
       -- check if any effects are affecting this player
       let pid = playerID currentPlayer
@@ -331,23 +348,18 @@ game players = do
             (let Players (l, r) = boardPlayers b in l ++ r)  
 
 
-boardToSBoard :: Board -> SBoard
-boardToSBoard b = 
-  let currentPlayer = getCurrentPlayer b in
-  let pid = playerID currentPlayer in 
-  let (Players (left, right)) = boardPlayers b in
-  let otherPlayers_ :: SPlayers
-      otherPlayers_ =  SPlayers $ map toSPlayer $ filter (filterOutCurrent pid) left ++ right  in
+boardToSBoard :: Board -> Int -> SBoard
+boardToSBoard b pid = 
+  let thisPlayer = getPlayerWithID b pid in
+  let otherPlayers_ =  SPlayers $ map toSPlayer $ getAllPlayersList b in
   let discardedCard_ = head $ discardPile b in 
-  let myHand_ = playerHand currentPlayer in
+  let myHand_ = playerHand thisPlayer in
   let sdirection_ = direction b in
-  let myName = playerName currentPlayer in
-  SBoard otherPlayers_ discardedCard_ sdirection_ myHand_  myName
+  let name = playerName thisPlayer in
+  let toDraw = addToPlayer b in
+  SBoard pid name otherPlayers_ discardedCard_ sdirection_ myHand_ (playerName $ getCurrentPlayer b) toDraw
        
   where 
-    filterOutCurrent :: Int -> Player -> Bool
-    filterOutCurrent pid (Player pid' _ _ _ _) = pid' /= pid
-
     toSPlayer (Player _ name hand _ _) = SPlayer 
       { splayerName = name
       , snumOfCards = length hand
@@ -430,6 +442,7 @@ instance UnoGame TerminalUno where
 createPlayer :: Int -> Handle -> Chan Message -> String -> Player
 createPlayer pid han chan name = Player pid name [] han chan 
 
+{-
 runGame :: OutChan -> [(Int, String, Chan Message, Handle)] ->  IO ()
 runGame outchan serverPlayers = do
     let players = map (\(pid, name, chan, handle) -> createPlayer pid handle chan name) serverPlayers
@@ -440,12 +453,12 @@ runGame outchan serverPlayers = do
     -- putStrLn $ "final board: " ++ show finalBoard
     -- putStrLn $ "Score = " ++ show result
     return ()
-
+-}
     
-type InChan = Chan Message
+-- type InChan = Chan Message
 type OutChan = Chan Message
 -- type Players = [(Int, Chan Message, Handle)]
-type Turn = MVar Int
+-- _type Turn = MVar Int
 newtype NetworkUno x = NetworkUno
   { runNetworkUno :: OutChan -> Players ->  IO x
   }
@@ -470,8 +483,8 @@ instance UnoGame NetworkUno where
   getPlayerMove _ board = NetworkUno $ \outchan _ -> do
     let (Player pid _ _ _ inchan) = getCurrentPlayer board 
 
-    broadcastOutGameState (boardToSBoard board) outchan
-
+    let sboards = map (boardToSBoard board . playerID) $ getAllPlayersList board
+    mapM_ (`broadcastOutGameState` outchan) sboards
      
     move <- fix $ \loop -> do
       testMsg <- readChan inchan 
@@ -486,7 +499,7 @@ instance UnoGame NetworkUno where
     where
     broadcastOutGameState :: SBoard -> OutChan -> IO ()
     broadcastOutGameState sboard outchan = do
-      _broadcast outchan (GameState sboard) All (-1)
+      _broadcast outchan (GameState sboard) (ToPlayer $ myID sboard) (-1)
 
     processUserMsg :: MessageContent -> Maybe [Card]
     processUserMsg (GameMove []) = Nothing
@@ -502,8 +515,8 @@ runNetworkGame outchan serverPlayers = do
     let players = Players ([], pl)
     let game' :: NetworkUno (Score, Board)
         game' = game players
-    (result, finalBoard) <- runNetworkUno game' outchan players
-    -- putStrLn $ "final board: " ++ show finalBoard
-    -- putStrLn $ "Score = " ++ show result
+    (_, finalBoard) <- runNetworkUno game' outchan players
+    putStrLn $ "final board: " ++ show finalBoard
+    --putStrLn $ "Score = " ++ show result
     return ()
 
