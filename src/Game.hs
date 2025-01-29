@@ -120,7 +120,8 @@ type OutChan = Chan Message
 type Players = [(Int, Chan Message, Handle)]
 type Turn = MVar Int
 newtype NetworkGame a b x = NetworkGame 
-  { runNetworkGame :: OutChan -> Players -> Turn -> IO x 
+  {
+  runNetworkGame :: OutChan -> Players -> Turn -> IO x 
   }
 
 instance Functor (NetworkGame a b) where

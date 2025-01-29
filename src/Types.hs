@@ -88,12 +88,6 @@ data Player = Player
 instance Show Player where
   show (Player _ name _ _ _) = "Player: " ++ name ++ " "
 
-{- TODO
- -
- - Add types for player and board that will be send to players (hidden cards)
- - add channel and handle to player
- - -}
-
 -- zipper for players
 newtype Players = Players ([Player], [Player]) deriving Generic
 -- instance Binary Players
