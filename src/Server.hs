@@ -26,11 +26,11 @@ type Turn = MVar Int
 --}
 
 sendOutMsg :: Handle -> Message -> Int -> IO ()
-sendOutMsg hdl msg playerID = do
+sendOutMsg hdl msg playerId = do
   case messageTarget msg of
     All -> sendMessage hdl msg
-    Normal -> unless (playerID == senderID msg) $ sendMessage hdl msg
-    ToPlayer targetID -> when (playerID == targetID) $ sendMessage hdl msg
+    Normal -> unless (playerId == senderID msg) $ sendMessage hdl msg
+    ToPlayer targetID -> when (playerId == targetID) $ sendMessage hdl msg
     Server -> return ()
 
 startServer :: IO ()
@@ -64,23 +64,23 @@ mainLoop sock chan msgNum gs players turn = do
 
 
 runConn :: (Socket, SockAddr) -> Chan Message -> Int -> GameStarted -> ServerPlayers -> Turn -> IO ()
-runConn (sock, _) chan msgNum gs players turn = do
-  let playerID = msgNum
+runConn (sock, _) chan msgNum gs players _ = do
+  let playerId = msgNum
   commLine <- dupChan chan
   inChan <- newChan
 
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
   -- adding this players handle to the players list
-  sendStr hdl "INIT_ID" playerID
+  sendStr hdl "INIT_ID" playerId
 
-  sendStr hdl "Hi, what is your name?" playerID
+  sendStr hdl "Hi, what is your name?" playerId
   name <- fmap init (receiveMessage hdl <&> flip unpackStringMessage "default_name")
-  putStrLn $ "client name: " ++ name ++ ", client ID = " ++ show playerID  
-  modifyMVar_ players $ \pl -> return $ (playerID, name, inChan, hdl) : pl
+  putStrLn $ "client name: " ++ name ++ ", client ID = " ++ show playerId  
+  modifyMVar_ players $ \pl -> return $ (playerId, name, inChan, hdl) : pl
 
-  writeChan chan $ Message Normal (Text ("--> " ++ name ++ " entered chat.")) playerID
-  sendStr hdl ("Welcome, " ++ name ++ "!") playerID
+  writeChan chan $ Message Normal (Text ("--> " ++ name ++ " entered chat.")) playerId
+  sendStr hdl ("Welcome, " ++ name ++ "!") playerId
 
 
   -- fork off a thread for reading from the duplicated channel
@@ -88,7 +88,7 @@ runConn (sock, _) chan msgNum gs players turn = do
   -- i przesyłanie ich do klienta (jeśli wiadomość nie pochodzi od niego)
   writerThread <- forkIO $ fix $ \loop -> do
     msg <- readChan commLine
-    sendOutMsg hdl msg playerID
+    sendOutMsg hdl msg playerId
     loop
 
   -- handle odpowiada za odczytywanie wiadomości od użytkownika i broadcastowanie
@@ -101,7 +101,7 @@ runConn (sock, _) chan msgNum gs players turn = do
         case line of
           "quit" -> do
             -- sendStr hdl "Bye!" playerID
-            writeChan commLine $ Message (ToPlayer playerID) (Text "Bye!") (-1) 
+            writeChan commLine $ Message (ToPlayer playerId) (Text "Bye!") (-1) 
             putStrLn $ "user " ++ name ++ " is quiting.."
           ':' : "start" -> do
             --writeChan commLine $ Message Text All "Starting the game..." (-1)
@@ -122,13 +122,13 @@ runConn (sock, _) chan msgNum gs players turn = do
         currentGS <- readMVar gs
         when currentGS $ do
           -- currentTurn <- readMVar turn
-          writeChan inChan (Message Server (GameMove m) playerID)
+          writeChan inChan (Message Server (GameMove m) playerId)
         loop
       GameState _ -> loop
 
 
   killThread writerThread                      
-  writeChan chan $ Message Normal (Text ("<-- " ++ name ++ " left.")) playerID
+  writeChan chan $ Message Normal (Text ("<-- " ++ name ++ " left.")) playerId
   hClose hdl                             
 
     

@@ -7,6 +7,8 @@ import Data.IORef
 import SDL
 import SDL.Font
 
+import Types
+
 {- Events ===================================================================-}
 type EventSource a = (AddHandler a, a -> IO ())
 type WrappedEvent = R.Event SDL.EventPayload
@@ -19,7 +21,7 @@ data AppEvent
   = KeyPressEvent SDL.Keycode
   | ButtonClickEvent String
   | MouseClickEvent (V2 Int)
-  deriving (Show)
+  | ServerMessage Message
 
 {- Graphics =================================================================-}
 type Screen = SDL.Surface

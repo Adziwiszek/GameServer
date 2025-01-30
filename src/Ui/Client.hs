@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Ui.Client (runGraphicsClient) where
-
+import Control.Concurrent
 import Control.Monad (when, unless)
 import SDL
 import SDL.Font
@@ -15,6 +15,8 @@ import Ui.Utils
 import Ui.Graphics
 import Types
 
+type PlayerID = MVar Int
+
 runGraphicsClient :: String -> IO ()
 runGraphicsClient username = do
   -- Initialize SDL
@@ -23,18 +25,14 @@ runGraphicsClient username = do
   -- Create window and renderer
   window <- createWindow "My SDL Application" defaultWindow
   renderer <- createRenderer window (-1) defaultRenderer
-  -- Create an event source for button clicks
-  -- sources <- (,) <$> newAddHandler <*> newAddHandler
-{-  above is equal to this:
-    escounter <- newAddHandler
-    espause <- newAddHandler
-    let sources = (escounter, espause) 
-  -}
+
+  inchan <- newChan
+  outchan <- newChan
+  playerid <- newEmptyMVar
+
   bup   <- createButton "up" "up" (V2 100 100)
   bdown <- createButton "down" "down" (V2 100 200)
-
   name1 <- createStaticText "myname" username (V2 400 100)
-  
   st1 <- createStaticText "id1" "0" (V2 100 400)
   st2 <- createStaticText "id1" "1" (V2 200 400)
   st3 <- createStaticText "id1" "2" (V2 300 400)
@@ -47,11 +45,8 @@ runGraphicsClient username = do
 
   -- sdlEventSource <- SDLEventSource <$> newAddHandler
 
-
   let networkDescription :: MomentIO ()
       networkDescription = do
-        {-eup <- event0 bup sdlEventSource
-        edown <- event0 bdown sdlEventSource-}
         appEvent <- fromAddHandler (addHandler appEventSource)
         let eButtonClick = filterE isButtonClickEvent appEvent 
         let eup = filterE (`isButtonEventWithID` "up") eButtonClick
@@ -83,6 +78,20 @@ setupCounter n eup edown =
             , subtract 1 <$ edown
             ]
 
+
+{- | Plan for connecting networking to io client
+ -
+ - add a way to map messages to appevents
+ -
+ - give channels to network client
+ -
+ - in eventloop check if we have any incoming messages in inchan
+ - if so fire server message event with a message connected to it
+ -
+ - in network description 
+ - 
+ - 
+ - -}
 
 -- Read commands and fire corresponding events 
 eventLoop :: Renderer -> EventSource AppEvent -> [Widget] -> IO ()

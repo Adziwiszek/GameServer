@@ -1,8 +1,5 @@
-{-# LANGUAGE DeriveGeneric #-}
-
 module Message (module Message) where 
 
-import GHC.Generics (Generic)
 import qualified Data.ByteString.Lazy as BSL
 import Control.Concurrent
 import Data.Binary
@@ -11,6 +8,8 @@ import System.IO
 
 import Types
 
+class MessageSender a where
+  sendToServer :: Handle -> a -> Int -> IO ()
 
 {-data MessageType
   = Text
@@ -27,8 +26,8 @@ _broadcast chan msg targ sID = writeChan chan $ Message {
   }
 
 sendToPlayer :: Chan Message -> Int -> MessageContent -> IO ()
-sendToPlayer chan playerID msgContent = do
-  let msg = Message {messageTarget=ToPlayer playerID, content=msgContent, senderID= -1}
+sendToPlayer chan playerId msgContent = do
+  let msg = Message {messageTarget=ToPlayer playerId, content=msgContent, senderID= -1}
   writeChan chan msg
 
 sendMessage :: Handle -> Message -> IO ()
@@ -68,12 +67,14 @@ smsg str mId = Message {
 sendStr :: Handle -> String -> Int -> IO ()
 sendStr hdl str mId = sendMessage hdl $ smsg str mId
 
-sendToServer :: Handle -> MessageContent -> Int -> IO ()
-sendToServer hdl cont pId = do
-  -- putStrLn "TESTING!!!"
-  -- putStrLn $ "Sending message: " ++ show cont
-  sendMessage hdl $ Message Server cont pId
+instance MessageSender MessageContent where
+  sendToServer hdl cont pId = do
+    sendMessage hdl $ Message Server cont pId
 
+instance MessageSender Message where
+  sendToServer hdl msg _ = do
+    sendMessage hdl msg
+    
 unpackStringMessage :: Message -> String -> String 
 unpackStringMessage msg def = process $ content msg where
   process (GameState _) = def

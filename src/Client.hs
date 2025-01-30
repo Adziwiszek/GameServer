@@ -2,7 +2,7 @@ module Client (startClient) where
 
 import Network.Socket
 import System.IO
-import Control.Exception (bracket, handle, SomeException(..))
+import Control.Exception (bracket, handle, SomeException(..), displayException)
 import Control.Monad.Fix (fix)
 import Control.Concurrent
 import System.Timeout
@@ -15,14 +15,16 @@ import Uno
 
 type PlayerID = MVar Int
 
+type MessageChan = Chan Message
+
 startClient :: IO ()
 startClient = do
     let host = "127.0.0.1"
     let port = "4242"
     putStrLn "Attempting to connect..."
-    playerID <- newEmptyMVar
+    playerId <- newEmptyMVar
     -- Use bracket to ensure proper cleanup
-    bracket (connect' host port) cleanup (`handleConnection` playerID)
+    bracket (connect' host port) cleanup (`handleConnection` playerId)
     where
         connect' host port = do
             addr <- resolve host port
@@ -40,7 +42,7 @@ startClient = do
             close sock
 
 handleConnection :: (Socket, Handle) -> PlayerID -> IO ()
-handleConnection (_, hdl) playerID = do
+handleConnection (_, hdl) playerId = do
   -- channel for passing messages between threads
   messageChan <- newChan
 
@@ -48,9 +50,9 @@ handleConnection (_, hdl) playerID = do
     msg <- receiveMessage hdl
     case content msg of
       Text "INIT_ID" -> do
-        wasINIT <- isEmptyMVar playerID
+        wasINIT <- isEmptyMVar playerId
         if wasINIT then do
-          putMVar playerID $ senderID msg
+          putMVar playerId $ senderID msg
           putStrLn $ "your id = " ++ show (senderID msg)
           loop
         else loop
@@ -73,12 +75,12 @@ handleConnection (_, hdl) playerID = do
 
   handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
     msg <- getLine
-    myID <- readMVar playerID
+    myId <- readMVar playerId
     parsedMsg <- parseUserMessage msg
     case parsedMsg of 
       Nothing -> loop 
       Just m -> do
-        sendToServer hdl m myID
+        sendToServer hdl m myId
         -- sendStr hdl (msg ++ " ") myID 
         case msg of
           "quit" -> do
@@ -109,4 +111,48 @@ parseUserMessage msg = do
       return $ Just $ GameMove cards
     _ -> do
       return $ Just $ Text $ msg ++ " "
+
+-- inchan -> input channel, messages that come from server
+-- outchan -> output channel, messages that we want to send to the server
+
+handleConnection2 :: (Socket, Handle) -> MessageChan -> MessageChan -> PlayerID -> IO ()
+handleConnection2 (_, hdl) inchan outchan playerId = do
+  -- channel for passing messages between threads
+  messageChan <- newChan
+
+  readerThread <- forkIO $ fix $ \loop -> do
+    msg <- receiveMessage hdl
+    if connectionEnded msg
+    then return ()
+    else do
+      -- we write to inchan and let main event loop deal with this message
+      writeChan inchan msg
+      loop
+
+  handle handleSenderThreadException $ fix $ \loop -> do
+    msg <- readChan outchan
+    myId <- readMVar playerId
+    sendToServer hdl msg myId
+    -- check if we want to disconnect from the server (right now clunky)
+    case content msg of
+      Text "quit" -> do
+        result <- timeout 500000 $ readChan messageChan
+        case result of
+          Nothing -> putStrLn "Server not responding. Forcing disconnect..."
+          Just _ -> return ()
+      _ -> loop
+
+  killThread readerThread
+  hClose hdl
+
+  where 
+    connectionEnded msg = case content msg of
+      Text "Bye!" -> True
+      _           -> False
+
+    handleSenderThreadException (SomeException e) = do
+      let err = displayException e
+      putStrLn err
+      return ()
+
 
