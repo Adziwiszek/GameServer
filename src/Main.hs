@@ -5,7 +5,7 @@ import System.IO (hFlush, stdout)
 
 import Client
 import Server
-import GraphicsClient
+import Ui.Client as UIClient
 
 data AppType 
   = Server
@@ -20,7 +20,7 @@ main = do
     Server -> startServer
     Client -> startClient
     Tooltip -> return ()
-    GraphicsClient username -> runGraphicsClient username
+    GraphicsClient username -> UIClient.runGraphicsClient username
 
 parse :: [String] -> IO AppType
 parse ["-h"] = do

@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module GraphicsClient (runGraphicsClient) where
+module Ui.Client (runGraphicsClient) where
 
 import Control.Monad (when, unless)
 import SDL
