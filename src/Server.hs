@@ -71,30 +71,35 @@ runConn (sock, _) chan msgNum gs players _ = do
 
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
-  -- adding this players handle to the players list
+
   sendStr hdl "INIT_ID" playerId
+  -- writeChan commLine $ Message (ToPlayer playerId) (Text "INIT_ID") (-1)
 
-  sendStr hdl "Hi, what is your name?" playerId
+  -- adding this players handle to the players list
   name <- fmap init (receiveMessage hdl <&> flip unpackStringMessage "default_name")
+
   putStrLn $ "client name: " ++ name ++ ", client ID = " ++ show playerId  
+  
+
   modifyMVar_ players $ \pl -> return $ (playerId, name, inChan, hdl) : pl
-
-  writeChan chan $ Message Normal (Text ("--> " ++ name ++ " entered chat.")) playerId
-  sendStr hdl ("Welcome, " ++ name ++ "!") playerId
-
+  -- writeChan chan $ Message Normal (Text ("--> " ++ name ++ " entered chat.")) playerId
+  -- sendStr hdl ("Welcome, " ++ name ++ "!") playerId
 
   -- fork off a thread for reading from the duplicated channel
   -- ten wątek jest odpowiedzialny za czytanie wiadomości z kanału 
   -- i przesyłanie ich do klienta (jeśli wiadomość nie pochodzi od niego)
   writerThread <- forkIO $ fix $ \loop -> do
     msg <- readChan commLine
+    putStrLn "server sending message:"
+    printStrMessage msg
     sendOutMsg hdl msg playerId
     loop
 
-  -- handle odpowiada za odczytywanie wiadomości od użytkownika i broadcastowanie
+  -- odpowiada za odczytywanie wiadomości od użytkownika i broadcastowanie
   -- ich do reszty użytkowników
   handle (\(SomeException e) -> putStrLn $ "Server error: " ++ show e) $ fix $ \loop -> do
     msg <- receiveMessage hdl
+    putStrLn "received message from client"
     case content msg of
       Text _ -> do
         let line = init (unpackStringMessage msg "ERR")
@@ -109,9 +114,6 @@ runConn (sock, _) chan msgNum gs players _ = do
             _players <- readMVar players 
             _ <- forkIO $ runNetworkGame chan _players 
             loop
-          {-':' : rest -> do
-            putStrLn $ "command used: " ++ rest
-            loop-}
           _ -> do
             currentGS <- readMVar gs
             unless currentGS 
@@ -132,4 +134,8 @@ runConn (sock, _) chan msgNum gs players _ = do
   hClose hdl                             
 
     
+printStrMessage :: Message -> IO ()
+printStrMessage msg = case content msg of
+  Text s -> putStrLn s
+  _      -> return ()
 

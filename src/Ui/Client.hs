@@ -4,6 +4,8 @@
 module Ui.Client (runGraphicsClient) where
 import Control.Concurrent
 import Control.Monad (when, unless)
+import Control.Monad.Fix (fix)
+import Control.Exception (bracket, handle, SomeException(..), displayException)
 import SDL
 import SDL.Font
 
@@ -13,6 +15,7 @@ import Reactive.Banana.Frameworks
 import Ui.Types
 import Ui.Utils
 import Ui.Graphics
+import Client (startUiClient)
 import Types
 
 type PlayerID = MVar Int
@@ -26,9 +29,10 @@ runGraphicsClient username = do
   window <- createWindow "My SDL Application" defaultWindow
   renderer <- createRenderer window (-1) defaultRenderer
 
-  inchan <- newChan
-  outchan <- newChan
+  inchan  :: Chan Message <- newChan 
+  outchan :: Chan Message <- newChan
   playerid <- newEmptyMVar
+  _ <- forkIO $ startUiClient inchan outchan playerid username
 
   bup   <- createButton "up" "up" (V2 100 100)
   bdown <- createButton "down" "down" (V2 100 200)
@@ -68,36 +72,29 @@ runGraphicsClient username = do
   actuate network
 
 
-  eventLoop renderer appEventSource widgets
-
-
-setupCounter :: Int -> R.Event AppEvent  -> R.Event AppEvent -> MomentIO (Behavior Int)
-setupCounter n eup edown =
-            accumB n $ unions
-            [ (+1) <$ eup
-            , subtract 1 <$ edown
-            ]
-
-
-{- | Plan for connecting networking to io client
- -
- - add a way to map messages to appevents
- -
- - give channels to network client
- -
- - in eventloop check if we have any incoming messages in inchan
- - if so fire server message event with a message connected to it
- -
- - in network description 
- - 
- - 
- - -}
+  eventLoop renderer appEventSource widgets inchan outchan playerid
 
 -- Read commands and fire corresponding events 
-eventLoop :: Renderer -> EventSource AppEvent -> [Widget] -> IO ()
-eventLoop renderer eventSource widgets = do
+eventLoop :: 
+  Renderer -> 
+  EventSource AppEvent -> 
+  [Widget] -> 
+  Chan Message ->
+  Chan Message ->
+  PlayerID ->
+  IO ()
+eventLoop renderer eventSource widgets inchan outchan playerId = do
     let buttons = filterButtons widgets
     let staticTexts = filterStaticText widgets
+
+    readerThread <- forkIO $ fix $ \loop -> do
+      msg <- readChan inchan
+      putStrLn "received message from server!"
+      case content msg of
+        Types.Text str -> do
+          putStrLn str
+        _ -> return ()
+      loop
 
     let loop = do
           -- Events
@@ -117,6 +114,10 @@ eventLoop renderer eventSource widgets = do
 
     loop
 
+    writeChan outchan $ Message Server (Types.Text "quit ") 0
+    putStrLn "sent godbue"
+    killThread readerThread
+
 {-----------------------------------------------------------------------------
     Program logic
 ------------------------------------------------------------------------------}
@@ -135,4 +136,12 @@ handleSDLEvent fireEvent buttons events = do
             (fireEvent $ ButtonClickEvent $ buttonID b)) 
         bs
 
+
+
+setupCounter :: Int -> R.Event AppEvent  -> R.Event AppEvent -> MomentIO (Behavior Int)
+setupCounter n eup edown =
+            accumB n $ unions
+            [ (+1) <$ eup
+            , subtract 1 <$ edown
+            ]
 

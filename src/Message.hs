@@ -50,11 +50,12 @@ hGetExact hdl = go BSL.empty
 
 receiveMessage :: Handle -> IO Message 
 receiveMessage hdl = do
+  -- putStrLn "trying to receive message..."
   sizeBS <- BSL.hGet hdl 8
   let size = decode  sizeBS :: Int64
-  --putStrLn $ "received message size = " ++ show size
+  -- putStrLn $ "received message size = " ++ show size
   msgBS <- hGetExact hdl size
-  --putStrLn "received message content"
+  -- putStrLn "received message content"
   return $ decode msgBS 
 
 smsg :: String -> Int -> Message
