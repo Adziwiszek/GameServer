@@ -73,30 +73,19 @@ runConn (sock, _) chan msgNum gs players _ = do
   hSetBuffering hdl NoBuffering
 
   sendStr hdl "INIT_ID" playerId
-  -- writeChan commLine $ Message (ToPlayer playerId) (Text "INIT_ID") (-1)
 
-  -- adding this players handle to the players list
   name <- fmap init (receiveMessage hdl <&> flip unpackStringMessage "default_name")
-
   putStrLn $ "client name: " ++ name ++ ", client ID = " ++ show playerId  
   
 
   modifyMVar_ players $ \pl -> return $ (playerId, name, inChan, hdl) : pl
-  -- writeChan chan $ Message Normal (Text ("--> " ++ name ++ " entered chat.")) playerId
-  -- sendStr hdl ("Welcome, " ++ name ++ "!") playerId
 
-  -- fork off a thread for reading from the duplicated channel
-  -- ten wątek jest odpowiedzialny za czytanie wiadomości z kanału 
-  -- i przesyłanie ich do klienta (jeśli wiadomość nie pochodzi od niego)
-  writerThread <- forkIO $ fix $ \loop -> do
+  senderThread <- forkIO $ fix $ \loop -> do
     msg <- readChan commLine
-    putStrLn "server sending message:"
-    printStrMessage msg
     sendOutMsg hdl msg playerId
     loop
 
-  -- odpowiada za odczytywanie wiadomości od użytkownika i broadcastowanie
-  -- ich do reszty użytkowników
+  -- reader thread
   handle (\(SomeException e) -> putStrLn $ "Server error: " ++ show e) $ fix $ \loop -> do
     msg <- receiveMessage hdl
     putStrLn "received message from client"
@@ -129,7 +118,7 @@ runConn (sock, _) chan msgNum gs players _ = do
       GameState _ -> loop
 
 
-  killThread writerThread                      
+  killThread senderThread                      
   writeChan chan $ Message Normal (Text ("<-- " ++ name ++ " left.")) playerId
   hClose hdl                             
 

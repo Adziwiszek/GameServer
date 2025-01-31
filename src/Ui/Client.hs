@@ -87,9 +87,9 @@ eventLoop renderer eventSource widgets inchan outchan playerId = do
     let buttons = filterButtons widgets
     let staticTexts = filterStaticText widgets
 
+    -- todo: in this thread convert server messages to AppEvent
     readerThread <- forkIO $ fix $ \loop -> do
       msg <- readChan inchan
-      putStrLn "received message from server!"
       case content msg of
         Types.Text str -> do
           putStrLn str
@@ -114,8 +114,9 @@ eventLoop renderer eventSource widgets inchan outchan playerId = do
 
     loop
 
+
     writeChan outchan $ Message Server (Types.Text "quit ") 0
-    putStrLn "sent godbue"
+
     killThread readerThread
 
 {-----------------------------------------------------------------------------

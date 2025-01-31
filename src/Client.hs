@@ -146,13 +146,10 @@ handleConnection2 (_, hdl) inchan outchan playerId = do
   messageChan <- newChan
 
   readerThread <- forkIO $ fix $ \loop -> do
-    putStr "getting message: "
     msg <- receiveMessage hdl
-    printStrMessage msg
     if connectionEnded msg
     then return ()
     else do
-      -- handle initializing playerId
       case content msg of 
         Text "INIT_ID" -> initPlayerId msg
         _ -> return ()
@@ -160,14 +157,10 @@ handleConnection2 (_, hdl) inchan outchan playerId = do
       writeChan inchan msg
       loop
 
+  -- sender thread
   handle handleSenderThreadException $ fix $ \loop -> do
     msg <- readChan outchan
-    printStrMessage msg 
-    -- here is the error blocking mvar
     myId <- readMVar playerId
-    
-    putStrLn $ "my id is " ++ show myId
-
     sendToServer hdl msg myId
     -- check if we want to disconnect from the server (right now clunky)
     case content msg of
@@ -187,14 +180,13 @@ handleConnection2 (_, hdl) inchan outchan playerId = do
       _           -> False
 
     handleSenderThreadException (SomeException e) = do
-      putStrLn $ show e
+      print e
 
     initPlayerId msg = case content msg of
       Text "INIT_ID" -> do
         idEmpty <- isEmptyMVar playerId
         when idEmpty $ do
           putMVar playerId $ senderID msg
-          putStrLn $ "your id = " ++ show (senderID msg)
       _ -> return ()
 
 printStrMessage :: Message -> IO ()
