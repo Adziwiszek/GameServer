@@ -74,6 +74,7 @@ runGraphicsClient username = do
 
   eventLoop renderer appEventSource widgets inchan outchan playerid
 
+
 -- Read commands and fire corresponding events 
 eventLoop :: 
   Renderer -> 
@@ -93,8 +94,11 @@ eventLoop renderer eventSource widgets inchan outchan playerId = do
       case content msg of
         Types.Text str -> do
           putStrLn str
+        Types.GameState gmst -> return ()
         _ -> return ()
       loop
+
+
 
     let loop = do
           -- Events
