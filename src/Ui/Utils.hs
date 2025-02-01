@@ -129,18 +129,23 @@ sinkStaticText st b = do
   e <- changes b
   reactimate' $ fmap (updateStaticText st) <$> e
 
+getTextBackgroundSize :: Text -> IO (V2 Int)
+getTextBackgroundSize text = do
+  let (Text str font _ (V4 w e n s)) = text
+  textSurface <- SDL.Font.solid font fBlack $ pack str
+  (V2 textW textH) <- SDL.surfaceDimensions textSurface
+  let bgWidth = fromIntegral textW + w + e
+  let bgHeight = fromIntegral textH + n + s
+  return $ V2 bgWidth bgHeight
+
+
 createStaticText :: String -> String -> V2 Int -> IO StaticText 
 createStaticText stId text pos = do
   font <- SDL.Font.load "Roboto-Black.ttf" 20
-  textSurface <- SDL.Font.solid font fBlack $ pack text
-  (V2 tW tH) <- SDL.surfaceDimensions textSurface
   let txt = Text text font fBlack $ V4 10 10 10 10
   textRef <- newIORef txt
-  let (V4 w e n s) = _textPadding txt
-  let rW = fromIntegral tW + w + e
-  let rH = fromIntegral tH + n + s
 
-  return $ StaticText stId textRef pos (V2 rW rH) $ intTo8WordColor white
+  return $ StaticText stId textRef pos $ intTo8WordColor white
   
 updateStaticText :: StaticText -> String -> IO ()
 updateStaticText staticText newString = do

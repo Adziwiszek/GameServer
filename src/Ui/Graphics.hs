@@ -43,12 +43,15 @@ renderTexture renderer texture p = do
 renderStaticText :: SDL.Renderer -> StaticText -> IO ()
 renderStaticText renderer st = do
   SDL.rendererDrawColor renderer $= stBgColor st
-  
-  (Text msg font color padding) <- readIORef (stTextRef st)
+  text <- readIORef (stTextRef st)
+  let (Text msg font color padding) = text
   let (V2 x y) = stPos st
-      -- (V2 width height) = stSize st
-      -- bgColor = stBgColor st
       (V4 w _ n _) = padding
+
+  (V2 bgW bgH) <- getTextBackgroundSize text
+
+  let rect = SDL.Rectangle (SDL.P (V2 x y)) (V2 bgW bgH) 
+  SDL.fillRect renderer (Just $ toCIntRect rect)
 
   textSurface <- SDL.Font.solid font color $ pack msg
   textTexture <- SDL.createTextureFromSurface renderer textSurface

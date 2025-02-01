@@ -46,7 +46,6 @@ data StaticText = StaticText
   { stID      :: String
   , stTextRef :: IORef Text 
   , stPos     :: V2 Int
-  , stSize    :: V2 Int
   , stBgColor :: Color
   }
 
