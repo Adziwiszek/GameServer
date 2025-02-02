@@ -6,8 +6,10 @@ import Control.Concurrent
 import Control.Monad (when, unless)
 import Control.Monad.Fix (fix)
 import Control.Exception (bracket, handle, SomeException(..), displayException)
+import Foreign.C.Types (CInt)
 import SDL
 import SDL.Font
+import SDL.Image (loadTexture)
 
 import Reactive.Banana as R
 import Reactive.Banana.Frameworks 
@@ -20,6 +22,10 @@ import Types
 
 type PlayerID = MVar Int
 
+tileWidth, tileHeight :: CInt
+tileWidth = 450
+tileHeight = 600
+
 runGraphicsClient :: String -> IO ()
 runGraphicsClient username = do
   -- Initialize SDL
@@ -29,22 +35,36 @@ runGraphicsClient username = do
   window <- createWindow "My SDL Application" defaultWindow
   renderer <- createRenderer window (-1) defaultRenderer
 
+  tileset <- loadTexture renderer "redcards.png"
+  let tileX = 0
+      tileY = 0
+      srcRect :: SDL.Rectangle CInt = Rectangle 
+          (P (V2 (tileX*tileWidth) (tileY*tileHeight)))
+          (V2 tileWidth tileHeight)
+      destRect = Just $ Rectangle
+          (P (V2 500 100))
+          (V2 150 200)
+  
+
   inchan  :: Chan Message <- newChan 
   outchan :: Chan Message <- newChan
   playerid <- newEmptyMVar
   _ <- forkIO $ startUiClient inchan outchan playerid username
 
-  bup   <- createButton "up" "up" (V2 100 100)
-  bdown <- createButton "down" "down" (V2 100 200)
+  imageDUpa <- createImageButton "imag" srcRect (V2 500 100) (V2 150 200)
+
+  bup   <- createButton "<-" "left" (V2 50 450)
+  bdown <- createButton "->" "right" (V2 50 500)
   name1 <- createStaticText "myname" username (V2 400 100)
-  st1 <- createStaticText "id1" "0" (V2 100 400)
-  st2 <- createStaticText "id1" "1" (V2 200 400)
-  st3 <- createStaticText "id1" "2" (V2 300 400)
-  st4 <- createStaticText "id1" "3" (V2 400 400)
+  st1 <- createStaticText "id1" "0" (V2 200 450)
+  st2 <- createStaticText "id1" "1" (V2 300 450)
+  st3 <- createStaticText "id1" "2" (V2 400 450)
+  st4 <- createStaticText "id1" "3" (V2 500 450)
 
   let widgets :: [Widget]
       widgets = [WButton bup, WButton bdown, 
-        WStaticText st1,WStaticText st2, WStaticText st3,WStaticText st4, WStaticText name1]
+        WStaticText st1,WStaticText st2, WStaticText st3,WStaticText st4, WStaticText name1,
+        WImgButton imageDUpa]
   appEventSource <- createAppEventSource
 
   -- sdlEventSource <- SDLEventSource <$> newAddHandler
@@ -53,8 +73,8 @@ runGraphicsClient username = do
       networkDescription = do
         appEvent <- fromAddHandler (addHandler appEventSource)
         let eButtonClick = filterE isButtonClickEvent appEvent 
-        let eup = filterE (`isButtonEventWithID` "up") eButtonClick
-        let edown = filterE (`isButtonEventWithID` "down") eButtonClick
+        let eup = filterE (`isButtonEventWithID` "right") eButtonClick
+        let edown = filterE (`isButtonEventWithID` "left") eButtonClick
 
         c1 <- setupCounter 0 eup edown
         c2 <- setupCounter 1 eup edown
@@ -72,7 +92,7 @@ runGraphicsClient username = do
   actuate network
 
 
-  eventLoop renderer appEventSource widgets inchan outchan playerid
+  eventLoop renderer appEventSource widgets inchan outchan tileset
 
 
 -- Read commands and fire corresponding events 
@@ -82,11 +102,12 @@ eventLoop ::
   [Widget] -> 
   Chan Message ->
   Chan Message ->
-  PlayerID ->
+  Texture ->
   IO ()
-eventLoop renderer eventSource widgets inchan outchan playerId = do
+eventLoop renderer eventSource widgets inchan outchan textureass = do
     let buttons = filterButtons widgets
     let staticTexts = filterStaticText widgets
+    let imgButtons = filterImageButton widgets
 
     -- todo: in this thread convert server messages to AppEvent
     readerThread <- forkIO $ fix $ \loop -> do
@@ -97,7 +118,6 @@ eventLoop renderer eventSource widgets inchan outchan playerId = do
         Types.GameState gmst -> return ()
         _ -> return ()
       loop
-
 
 
     let loop = do
@@ -112,6 +132,9 @@ eventLoop renderer eventSource widgets inchan outchan playerId = do
           renderButtons renderer $ zip buttons [white, white]
           renderStaticTexts renderer staticTexts
 
+          mapM_ renderImg imgButtons 
+
+
 
           present renderer
           unless qPressed loop
@@ -122,6 +145,14 @@ eventLoop renderer eventSource widgets inchan outchan playerId = do
     writeChan outchan $ Message Server (Types.Text "quit ") 0
 
     killThread readerThread
+
+    where
+      renderImg imBut = do
+        let srcRect = ibSrcRect imBut
+            destRect = Just $ Rectangle
+                (P (V2 500 100))
+                (V2 150 200)
+        copy renderer textureass (Just srcRect) destRect
 
 {-----------------------------------------------------------------------------
     Program logic

@@ -96,6 +96,15 @@ mousePos e =
   let SDL.P (V2 x y) = SDL.mouseButtonEventPos e in
   V2 (fromIntegral x) (fromIntegral y)
 
+
+createImageButton :: MonadIO m 
+  => String 
+  -> SDL.Rectangle CInt
+  -> V2 Int 
+  -> V2 Int 
+  -> m ImageButton
+createImageButton bId srcRect pos bsize = return $ ImageButton bId srcRect pos bsize
+
 createTextTexture :: MonadIO m => String -> Color -> Font -> SDL.Renderer -> m Texture
 createTextTexture text color font renderer = do
   textSurface <- SDL.Font.solid font color $ pack text
@@ -129,6 +138,8 @@ sinkStaticText st b = do
   e <- changes b
   reactimate' $ fmap (updateStaticText st) <$> e
 
+
+
 getTextBackgroundSize :: Text -> IO (V2 Int)
 getTextBackgroundSize text = do
   let (Text str font _ (V4 w e n s)) = text
@@ -155,14 +166,20 @@ updateStaticText staticText newString = do
 filterButtons :: [Widget] -> [Button]
 filterButtons = concatMap transWidget
   where
-    transWidget (WStaticText _) = []
     transWidget (WButton b) = [b]
+    transWidget _ = []
 
 filterStaticText :: [Widget] -> [StaticText]
 filterStaticText = concatMap transWidget
   where
     transWidget (WStaticText st) = [st]
-    transWidget (WButton _) = []
+    transWidget _ = []
+
+filterImageButton :: [Widget] -> [ImageButton]
+filterImageButton = concatMap transWidget
+  where
+    transWidget (WImgButton st) = [st]
+    transWidget _ = []
 
 {-----------------------------------------------------------------------------
     Events

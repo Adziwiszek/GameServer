@@ -2,6 +2,7 @@ module Ui.Types (module Ui.Types) where
 
 import Reactive.Banana as R
 import Reactive.Banana.Frameworks
+import Foreign.C.Types (CInt)
 import Data.Word
 import Data.IORef
 import SDL
@@ -41,6 +42,13 @@ data Button = Button
   , buttonPos  :: V2 Int
   , buttonSize :: V2 Int
   }
+  
+data ImageButton = ImageButton
+  { ibID   :: String
+  , ibSrcRect :: SDL.Rectangle CInt
+  , ibPos  :: V2 Int
+  , ibSize :: V2 Int
+  }
 
 data StaticText = StaticText
   { stID      :: String
@@ -52,4 +60,5 @@ data StaticText = StaticText
 data Widget
   = WButton Button
   | WStaticText StaticText
+  | WImgButton ImageButton
 
