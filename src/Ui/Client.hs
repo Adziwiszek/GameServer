@@ -26,6 +26,39 @@ tileWidth, tileHeight :: CInt
 tileWidth = 450
 tileHeight = 600
 
+colorToKey :: CardColor -> CInt
+colorToKey Blue = 0
+colorToKey Green = 1
+colorToKey Yellow = 2
+colorToKey Red = 3
+colorToKey Colorless = 4
+colorToKey _ = undefined
+
+makeColorMap :: CardColor -> [(Card, (CInt, CInt))]
+makeColorMap col = 
+  let colKey = colorToKey col in
+  zip ([Card (Number i, col) | i <- [0..9]] ++ [Card (Add 2, col), Card (Skip, col), Card (Switch, col)]) $
+  zip [colKey, colKey..] [0..]
+
+colorTextureTileMap :: [(Card, (CInt, CInt))]
+colorTextureTileMap = 
+  let colorMaps = concatMap makeColorMap [Red, Green, Yellow, Blue]
+  in colorMaps ++ [(Card (AddColorless (4, Null), Colorless), (0, 4)), (Card (ChangeColor Null, Colorless), (1, 4))]
+
+getTileRect :: (CInt, CInt) -> SDL.Rectangle CInt
+getTileRect (x, y) = Rectangle 
+          (P (V2 (x * tileWidth) (y * tileHeight)))
+          (V2 tileWidth tileHeight)
+
+cardToTile :: Card -> SDL.Rectangle CInt
+cardToTile card = case lookup card colorTextureTileMap of
+  Just pair -> getTileRect pair
+  Nothing -> undefined
+
+
+--unoCardToTextureTile :: Card -> SDL.Rectangle CInt
+--unoCardToTextureTile card = 
+
 runGraphicsClient :: String -> IO ()
 runGraphicsClient username = do
   -- Initialize SDL
@@ -35,18 +68,15 @@ runGraphicsClient username = do
   window <- createWindow "My SDL Application" defaultWindow
   renderer <- createRenderer window (-1) defaultRenderer
 
-  tileset <- loadTexture renderer "redcards.png"
-  let tileX = 0
-      tileY = 0
-      srcRect :: SDL.Rectangle CInt = Rectangle 
-          (P (V2 (tileX*tileWidth) (tileY*tileHeight)))
-          (V2 tileWidth tileHeight)
-  
-
   inchan  :: Chan Message <- newChan 
   outchan :: Chan Message <- newChan
   playerid <- newEmptyMVar
   _ <- forkIO $ startUiClient inchan outchan playerid username
+
+  tileset <- loadTexture renderer "unocards.png"
+
+  let c = Card (AddColorless (4, Null), Colorless)
+  let srcRect = cardToTile c
 
   imageDUpa <- createImageButton "imag" srcRect (V2 500 100) (V2 150 200)
 
