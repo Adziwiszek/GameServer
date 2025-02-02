@@ -46,8 +46,8 @@ data Button = Button
 data ImageButton = ImageButton
   { ibID   :: String
   , ibSrcRect :: SDL.Rectangle CInt
-  , ibPos  :: V2 Int
-  , ibSize :: V2 Int
+  , ibPos  :: V2 CInt
+  , ibSize :: V2 CInt
   }
 
 data StaticText = StaticText

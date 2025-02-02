@@ -41,9 +41,6 @@ runGraphicsClient username = do
       srcRect :: SDL.Rectangle CInt = Rectangle 
           (P (V2 (tileX*tileWidth) (tileY*tileHeight)))
           (V2 tileWidth tileHeight)
-      destRect = Just $ Rectangle
-          (P (V2 500 100))
-          (V2 150 200)
   
 
   inchan  :: Chan Message <- newChan 
@@ -131,10 +128,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
           clear renderer
           renderButtons renderer $ zip buttons [white, white]
           renderStaticTexts renderer staticTexts
-
-          mapM_ renderImg imgButtons 
-
-
+          renderImageButtons renderer textureass imgButtons
 
           present renderer
           unless qPressed loop
@@ -146,13 +140,6 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
 
     killThread readerThread
 
-    where
-      renderImg imBut = do
-        let srcRect = ibSrcRect imBut
-            destRect = Just $ Rectangle
-                (P (V2 500 100))
-                (V2 150 200)
-        copy renderer textureass (Just srcRect) destRect
 
 {-----------------------------------------------------------------------------
     Program logic

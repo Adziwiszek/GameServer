@@ -100,8 +100,8 @@ mousePos e =
 createImageButton :: MonadIO m 
   => String 
   -> SDL.Rectangle CInt
-  -> V2 Int 
-  -> V2 Int 
+  -> V2 CInt 
+  -> V2 CInt 
   -> m ImageButton
 createImageButton bId srcRect pos bsize = return $ ImageButton bId srcRect pos bsize
 

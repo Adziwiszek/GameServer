@@ -62,6 +62,17 @@ renderStaticText renderer st = do
 renderStaticTexts :: SDL.Renderer -> [StaticText] -> IO ()
 renderStaticTexts renderer = mapM_ (renderStaticText renderer)
 
+renderImageButtons :: SDL.Renderer -> SDL.Texture -> [ImageButton] -> IO ()
+renderImageButtons renderer texture = mapM_ (renderImageButton renderer texture)
+
+renderImageButton :: SDL.Renderer -> SDL.Texture -> ImageButton -> IO ()
+renderImageButton renderer texture imBut = do
+        let srcRect = ibSrcRect imBut
+            destRect = Just $ Rectangle
+                (P (ibPos imBut))
+                (ibSize imBut)
+        copy renderer texture (Just srcRect) destRect
+
 -- Utils =====================================================================
 
 centerTextInRect :: SDL.Rectangle CInt -> (CInt, CInt) -> SDL.Rectangle CInt
