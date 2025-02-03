@@ -45,7 +45,7 @@ makeColorMap :: CardColor -> [(Card, (CInt, CInt))]
 makeColorMap col = 
   let colKey = colorToKey col in
   zip ([Card (Number i, col) | i <- [0..9]] ++ [Card (Add 2, col), Card (Skip, col), Card (Switch, col)]) $
-  zip [colKey, colKey..] [0..]
+  zip [0..] [colKey | _ <- [1..13]] 
 
 colorTextureTileMap :: [(Card, (CInt, CInt))]
 colorTextureTileMap = 

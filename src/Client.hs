@@ -2,7 +2,7 @@ module Client (startClient, startUiClient) where
 
 import Network.Socket
 import System.IO
-import Control.Exception (bracket, handle, SomeException(..), displayException)
+import Control.Exception (bracket, handle, SomeException(..))
 import Control.Monad.Fix (fix)
 import Control.Concurrent
 import System.Timeout

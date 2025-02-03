@@ -27,6 +27,10 @@ import Types
 --unoCardToTextureTile :: Card -> SDL.Rectangle CInt
 --unoCardToTextureTile card = 
 
+changeCardNum :: Card -> Int -> Card
+changeCardNum (Card (Number x, col)) y = Card (Number (x + y), col)
+changeCardNum _ _ = undefined
+
 runGraphicsClient :: String -> IO ()
 runGraphicsClient username = do
   -- Initialize SDL
@@ -43,8 +47,10 @@ runGraphicsClient username = do
 
   tileset <- loadTexture renderer "unocards.png"
 
-  let c = Card (AddColorless (4, Null), Colorless)
+  let c = Card (Number 9, Blue)
   let srcRect = cardToTile c
+  let (SDL.Rectangle (P (V2 x y)) (V2 _ _)) = srcRect
+  putStrLn $ "x = " ++ show (x `div` tileWidth) ++ ", y = " ++ show (y `div` tileHeight)
 
   imageDUpa <- createImageButton "imag" srcRect (V2 500 100) (V2 150 200)
 
@@ -76,6 +82,9 @@ runGraphicsClient username = do
         c3 <- setupCounter 2 eup edown
         c4 <- setupCounter 3 eup edown
 
+        testbeh <- setupimage eup edown
+
+        --sinkImageButton imageDUpa testbeh
         --reactimate $ fmap showClick eButtonClick
         sinkStaticText st1 (show <$> c1)
         sinkStaticText st2 (show <$> c2)
@@ -89,6 +98,13 @@ runGraphicsClient username = do
 
   eventLoop renderer appEventSource widgets inchan outchan tileset
 
+  where
+  setupimage :: R.Event AppEvent  -> R.Event AppEvent -> MomentIO (Behavior Card)
+  setupimage eup edown =
+              accumB (Card (Number 0, Red)) $ unions
+              [ (`changeCardNum` 1) <$ eup
+              , (`changeCardNum` (-1)) <$ edown
+              ]
 
 -- Read commands and fire corresponding events 
 eventLoop :: 
