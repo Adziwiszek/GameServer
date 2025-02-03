@@ -254,6 +254,9 @@ registerButtonClickEvent button = do
   return 
   -}
 
+hold :: a -> R.Event a -> MomentIO (Behavior a)
+hold initial e = accumB initial (const <$> e)
+
 event0 :: Button -> SDLEventSource -> MomentIO (R.Event ())
 event0 button sdlSource = do
     clickEvent <- filterE (isButtonClicked button) 
@@ -349,6 +352,9 @@ isButtonEventWithID :: AppEvent -> String -> Bool
 isButtonEventWithID (ButtonClickEvent bid) bid' = bid == bid'
 isButtonEventWithID _ _ = False
 
+isGameStateEvent :: AppEvent -> Bool
+isGameStateEvent (GameStateEvent _) = True
+isGameStateEvent _ = False
 {-----------------------------------------------------------------------------
     Graphics
 ------------------------------------------------------------------------------}

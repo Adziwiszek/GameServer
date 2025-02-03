@@ -23,7 +23,7 @@ data AppEvent
   | ButtonClickEvent String
   | MouseClickEvent (V2 Int)
   | ServerMessage Message
-  | GameState SBoard
+  | GameStateEvent SBoard
 
 {- Graphics =================================================================-}
 type Screen = SDL.Surface

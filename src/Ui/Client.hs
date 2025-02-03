@@ -2,9 +2,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Ui.Client (runGraphicsClient) where
+import Data.Maybe (listToMaybe)
 import Control.Concurrent
-import Control.Monad (when, unless)
-import Control.Monad.Fix (fix)
+import Control.Monad.State
+-- import Control.Monad (when, unless)
+-- import Control.Monad.Fix (fix)
 --import Control.Exception (bracket, handle, SomeException(..), displayException)
 -- import Foreign.C.Types (CInt)
 import SDL
@@ -20,12 +22,10 @@ import Ui.Graphics
 import Client (startUiClient)
 import Types
 
--- type PlayerID = MVar Int
 
+(!?) :: [a] -> Int -> Maybe a
+(!?) xs n = listToMaybe $ drop n xs
 
-
---unoCardToTextureTile :: Card -> SDL.Rectangle CInt
---unoCardToTextureTile card = 
 
 changeCardNum :: Card -> Int -> Card
 changeCardNum (Card (Number x, col)) y = Card (Number (x + y), col)
@@ -49,23 +49,29 @@ runGraphicsClient username = do
 
   let c = Card (Number 9, Blue)
   let srcRect = cardToTile c
-  let (SDL.Rectangle (P (V2 x y)) (V2 _ _)) = srcRect
-  putStrLn $ "x = " ++ show (x `div` tileWidth) ++ ", y = " ++ show (y `div` tileHeight)
 
-  imageDUpa <- createImageButton "imag" srcRect (V2 500 100) (V2 150 200)
+  handcard1 <- createImageButton "handcard1" srcRect (V2 100 420) (V2 100 150)
+  handcard2 <- createImageButton "handcard2" srcRect (V2 250 420) (V2 100 150)
+  handcard3 <- createImageButton "handcard3" srcRect (V2 400 420) (V2 100 150)
+  handcard4 <- createImageButton "handcard4" srcRect (V2 550 420) (V2 100 150)
+
+  let handcards = 
+        [ handcard1
+        , handcard2
+        , handcard3
+        , handcard4
+        ]
+
+  bstartGame <- createButton "start" "startGame" (V2 0 0)
 
   bup   <- createButton "<-" "left" (V2 50 450)
   bdown <- createButton "->" "right" (V2 50 500)
   name1 <- createStaticText "myname" username (V2 400 100)
-  st1 <- createStaticText "id1" "0" (V2 200 450)
-  st2 <- createStaticText "id1" "1" (V2 300 450)
-  st3 <- createStaticText "id1" "2" (V2 400 450)
-  st4 <- createStaticText "id1" "3" (V2 500 450)
 
   let widgets :: [Widget]
       widgets = [WButton bup, WButton bdown, 
-        WStaticText st1,WStaticText st2, WStaticText st3,WStaticText st4, WStaticText name1,
-        WImgButton imageDUpa]
+        WStaticText name1,
+        WButton bstartGame] ++ map WImgButton handcards
   appEventSource <- createAppEventSource
 
   -- sdlEventSource <- SDLEventSource <$> newAddHandler
@@ -74,22 +80,22 @@ runGraphicsClient username = do
       networkDescription = do
         appEvent <- fromAddHandler (addHandler appEventSource)
         let eButtonClick = filterE isButtonClickEvent appEvent 
-        let eup = filterE (`isButtonEventWithID` "right") eButtonClick
-        let edown = filterE (`isButtonEventWithID` "left") eButtonClick
-
-        c1 <- setupCounter 0 eup edown
-        c2 <- setupCounter 1 eup edown
-        c3 <- setupCounter 2 eup edown
-        c4 <- setupCounter 3 eup edown
+            eup = filterE (`isButtonEventWithID` "right") eButtonClick
+            edown = filterE (`isButtonEventWithID` "left") eButtonClick
+            estartGame = filterE (`isButtonEventWithID` "startGame") appEvent
+        
 
         testbeh <- setupimage eup edown
+        bcard1 <- setupgamecard appEvent 1
+        bcard2 <- setupgamecard appEvent 2
+        bcard3 <- setupgamecard appEvent 3
+        bcard4 <- setupgamecard appEvent 4
 
-        --sinkImageButton imageDUpa testbeh
-        --reactimate $ fmap showClick eButtonClick
-        sinkStaticText st1 (show <$> c1)
-        sinkStaticText st2 (show <$> c2)
-        sinkStaticText st3 (show <$> c3)
-        sinkStaticText st4 (show <$> c4)
+        sinkImageButton handcard1 bcard1
+        sinkImageButton handcard2 bcard2
+        sinkImageButton handcard3 bcard3
+        sinkImageButton handcard4 bcard4
+        reactimate $ fmap (`startGame` outchan) estartGame
 
   -- network <- setupNetwork appEventSource 
   network <- compile networkDescription
@@ -105,6 +111,25 @@ runGraphicsClient username = do
               [ (`changeCardNum` 1) <$ eup
               , (`changeCardNum` (-1)) <$ edown
               ]
+
+  startGame :: AppEvent -> Chan Message -> IO ()
+  startGame appevent outchan = case appevent of 
+    ButtonClickEvent bid -> do
+      writeChan outchan $ Message Server (Types.Text ":start ") 0
+    _ -> return ()
+
+  setupgamecard :: R.Event AppEvent -> Int -> MomentIO (Behavior Card)
+  setupgamecard serverevent n = do
+    let egamestate = fmap (prepareCard n) (filterE isGameStateEvent serverevent)
+    hold (Card (Number 0, Red)) egamestate
+
+  prepareCard n (GameStateEvent gs) = case myHand gs !? n of
+    Just c -> c
+    Nothing -> Card (Number 0, Red)
+  prepareCard _ _ = undefined
+
+
+
 
 -- Read commands and fire corresponding events 
 eventLoop :: 
@@ -126,7 +151,10 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
       case content msg of
         Types.Text str -> do
           putStrLn str
-        Types.GameState _ -> return ()
+        Types.GameState state -> do
+          putStrLn "received game state"
+          fire eventSource $ GameStateEvent state
+          return ()
         _ -> return ()
       loop
 
@@ -140,7 +168,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
           -- Rendering
           rendererDrawColor renderer $= V4 0 0 255 255
           clear renderer
-          renderButtons renderer $ zip buttons [white, white]
+          renderButtons renderer $ zip buttons [white, white, white]
           renderStaticTexts renderer staticTexts
           renderImageButtons renderer textureass imgButtons
 
