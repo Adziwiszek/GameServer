@@ -67,11 +67,11 @@ renderImageButtons renderer texture = mapM_ (renderImageButton renderer texture)
 
 renderImageButton :: SDL.Renderer -> SDL.Texture -> ImageButton -> IO ()
 renderImageButton renderer texture imBut = do
-        let srcRect = ibSrcRect imBut
-            destRect = Just $ Rectangle
-                (P (ibPos imBut))
-                (ibSize imBut)
-        copy renderer texture (Just srcRect) destRect
+  srcRect <- readIORef $ ibSrcRect imBut
+  let destRect = Just $ Rectangle
+          (P (ibPos imBut))
+          (ibSize imBut)
+  copy renderer texture (Just srcRect) destRect
 
 -- Utils =====================================================================
 

@@ -12,6 +12,7 @@ import Data.Text (pack)
 import Foreign.C.Types (CInt)
 
 import Ui.Types
+import Types
 
 
 white, black :: V4 Int
@@ -23,6 +24,43 @@ fRed = V4 255 0 0 255
 
 fBlack :: SDL.Font.Color
 fBlack = V4 0 0 0 255
+
+
+{-----------------------------------------------------------------------------
+    Card tileset  
+------------------------------------------------------------------------------}
+tileWidth, tileHeight :: CInt
+tileWidth = 450
+tileHeight = 600
+
+colorToKey :: CardColor -> CInt
+colorToKey Blue = 0
+colorToKey Green = 1
+colorToKey Yellow = 2
+colorToKey Red = 3
+colorToKey Colorless = 4
+colorToKey _ = undefined
+
+makeColorMap :: CardColor -> [(Card, (CInt, CInt))]
+makeColorMap col = 
+  let colKey = colorToKey col in
+  zip ([Card (Number i, col) | i <- [0..9]] ++ [Card (Add 2, col), Card (Skip, col), Card (Switch, col)]) $
+  zip [colKey, colKey..] [0..]
+
+colorTextureTileMap :: [(Card, (CInt, CInt))]
+colorTextureTileMap = 
+  let colorMaps = concatMap makeColorMap [Red, Green, Yellow, Blue]
+  in colorMaps ++ [(Card (AddColorless (4, Null), Colorless), (0, 4)), (Card (ChangeColor Null, Colorless), (1, 4))]
+
+getTileRect :: (CInt, CInt) -> SDL.Rectangle CInt
+getTileRect (x, y) = Rectangle 
+          (P (V2 (x * tileWidth) (y * tileHeight)))
+          (V2 tileWidth tileHeight)
+
+cardToTile :: Card -> SDL.Rectangle CInt
+cardToTile card = case lookup card colorTextureTileMap of
+  Just pair -> getTileRect pair
+  Nothing -> undefined
 
 {-----------------------------------------------------------------------------
     SDL Keyboard logic
@@ -97,13 +135,15 @@ mousePos e =
   V2 (fromIntegral x) (fromIntegral y)
 
 
-createImageButton :: MonadIO m 
-  => String 
+createImageButton 
+  :: String 
   -> SDL.Rectangle CInt
   -> V2 CInt 
   -> V2 CInt 
-  -> m ImageButton
-createImageButton bId srcRect pos bsize = return $ ImageButton bId srcRect pos bsize
+  -> IO ImageButton
+createImageButton bId srcRect pos bsize = do
+  rectRef <- newIORef srcRect 
+  return $ ImageButton bId rectRef pos bsize
 
 createTextTexture :: MonadIO m => String -> Color -> Font -> SDL.Renderer -> m Texture
 createTextTexture text color font renderer = do
@@ -125,12 +165,14 @@ createButton text bID pos = do
   font <- SDL.Font.load "Roboto-Black.ttf" 20
   textSurface <- SDL.Font.solid font fBlack $ pack text
   (V2 tW tH) <- SDL.surfaceDimensions textSurface
-  let txt = Text text font fBlack $ V4 10 10 10 10
+  let txt = Ui.Types.Text text font fBlack $ V4 10 10 10 10
   let (V4 w e n s) = _textPadding txt
   let rW = fromIntegral tW + w + e
   let rH = fromIntegral tH + n + s
   return $ Button bID txt pos (V2 rW rH)
 
+
+-- we connect widget to the behavior, when the string changes we update the text
 sinkStaticText :: StaticText -> Behavior String -> MomentIO ()
 sinkStaticText st b = do
   x <- valueBLater b
@@ -139,10 +181,18 @@ sinkStaticText st b = do
   reactimate' $ fmap (updateStaticText st) <$> e
 
 
+-- connecting image button to the behavior
+sinkImageButton :: ImageButton -> Behavior Card -> MomentIO ()
+sinkImageButton imgb b = do
+  card <- valueBLater b
+  liftIOLater $ updateImageButtonTile imgb card
+  e <- changes b
+  reactimate' $ fmap (updateImageButtonTile imgb) <$> e
+
 
 getTextBackgroundSize :: Text -> IO (V2 Int)
 getTextBackgroundSize text = do
-  let (Text str font _ (V4 w e n s)) = text
+  let (Ui.Types.Text str font _ (V4 w e n s)) = text
   textSurface <- SDL.Font.solid font fBlack $ pack str
   (V2 textW textH) <- SDL.surfaceDimensions textSurface
   let bgWidth = fromIntegral textW + w + e
@@ -153,7 +203,7 @@ getTextBackgroundSize text = do
 createStaticText :: String -> String -> V2 Int -> IO StaticText 
 createStaticText stId text pos = do
   font <- SDL.Font.load "Roboto-Black.ttf" 20
-  let txt = Text text font fBlack $ V4 10 10 10 10
+  let txt = Ui.Types.Text text font fBlack $ V4 10 10 10 10
   textRef <- newIORef txt
 
   return $ StaticText stId textRef pos $ intTo8WordColor white
@@ -162,6 +212,11 @@ updateStaticText :: StaticText -> String -> IO ()
 updateStaticText staticText newString = do
   oldText <- readIORef (stTextRef staticText)
   writeIORef (stTextRef staticText) $ oldText {_textMsg = newString}
+
+updateImageButtonTile :: ImageButton -> Card -> IO ()
+updateImageButtonTile imgb card = do
+  oldRect <- readIORef (ibSrcRect imgb)
+  writeIORef (ibSrcRect imgb) $ cardToTile card
 
 filterButtons :: [Widget] -> [Button]
 filterButtons = concatMap transWidget

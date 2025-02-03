@@ -5,8 +5,8 @@ module Ui.Client (runGraphicsClient) where
 import Control.Concurrent
 import Control.Monad (when, unless)
 import Control.Monad.Fix (fix)
-import Control.Exception (bracket, handle, SomeException(..), displayException)
-import Foreign.C.Types (CInt)
+--import Control.Exception (bracket, handle, SomeException(..), displayException)
+-- import Foreign.C.Types (CInt)
 import SDL
 import SDL.Font
 import SDL.Image (loadTexture)
@@ -20,40 +20,8 @@ import Ui.Graphics
 import Client (startUiClient)
 import Types
 
-type PlayerID = MVar Int
+-- type PlayerID = MVar Int
 
-tileWidth, tileHeight :: CInt
-tileWidth = 450
-tileHeight = 600
-
-colorToKey :: CardColor -> CInt
-colorToKey Blue = 0
-colorToKey Green = 1
-colorToKey Yellow = 2
-colorToKey Red = 3
-colorToKey Colorless = 4
-colorToKey _ = undefined
-
-makeColorMap :: CardColor -> [(Card, (CInt, CInt))]
-makeColorMap col = 
-  let colKey = colorToKey col in
-  zip ([Card (Number i, col) | i <- [0..9]] ++ [Card (Add 2, col), Card (Skip, col), Card (Switch, col)]) $
-  zip [colKey, colKey..] [0..]
-
-colorTextureTileMap :: [(Card, (CInt, CInt))]
-colorTextureTileMap = 
-  let colorMaps = concatMap makeColorMap [Red, Green, Yellow, Blue]
-  in colorMaps ++ [(Card (AddColorless (4, Null), Colorless), (0, 4)), (Card (ChangeColor Null, Colorless), (1, 4))]
-
-getTileRect :: (CInt, CInt) -> SDL.Rectangle CInt
-getTileRect (x, y) = Rectangle 
-          (P (V2 (x * tileWidth) (y * tileHeight)))
-          (V2 tileWidth tileHeight)
-
-cardToTile :: Card -> SDL.Rectangle CInt
-cardToTile card = case lookup card colorTextureTileMap of
-  Just pair -> getTileRect pair
-  Nothing -> undefined
 
 
 --unoCardToTextureTile :: Card -> SDL.Rectangle CInt
@@ -142,7 +110,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
       case content msg of
         Types.Text str -> do
           putStrLn str
-        Types.GameState gmst -> return ()
+        Types.GameState _ -> return ()
         _ -> return ()
       loop
 
