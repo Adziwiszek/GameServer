@@ -12,6 +12,7 @@ import Data.Text (pack)
 import Foreign.C.Types (CInt)
 
 import Ui.Types
+import Uno.Common.Types
 import Types
 
 

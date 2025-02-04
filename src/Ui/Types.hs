@@ -9,6 +9,7 @@ import SDL
 import SDL.Font
 
 import Types
+import Uno.Common.Types
 
 {- Events ===================================================================-}
 type EventSource a = (AddHandler a, a -> IO ())

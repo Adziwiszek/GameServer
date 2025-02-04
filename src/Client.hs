@@ -12,6 +12,7 @@ import System.Process (callCommand)
 
 import Message
 import Types
+import Uno.Common.Types
 import Uno
 
 type PlayerID = MVar Int

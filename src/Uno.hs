@@ -12,6 +12,8 @@ import Control.Concurrent
 -- import Control.Monad (when)
 
 import Types
+import Uno.Types
+import Uno.Common.Types
 import Message
 
 {-

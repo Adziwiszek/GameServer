@@ -22,6 +22,7 @@ import Ui.Utils
 import Ui.Graphics
 import Client (startUiClient)
 import Uno (defaultCard)
+import Uno.Common.Types
 import Types
 
   
