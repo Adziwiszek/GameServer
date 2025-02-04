@@ -109,6 +109,9 @@ currentPlayerWaits board =
     Cards
  -----------------------------------------------------------------------------}
 
+debugPrintCard :: Card -> IO ()
+debugPrintCard card = putStrLn $ "Card clicked = " ++ show card
+
 getCardRole :: Card -> CardRole
 getCardRole (Card (r, _)) = r
 

@@ -25,6 +25,31 @@ import Utils
 
 
 
+dupa :: Behavior Int -> Behavior SBoard -> Int -> MomentIO (Behavior Card)
+dupa bint bboard initialIndex = return $
+    liftA2 (\offset gs ->
+              let index = offset + initialIndex
+              in if index < 0
+              then defaultCard 
+              else maybe defaultCard id (myHand gs !? index)
+          ) bint bboard
+
+
+setupReactiveCard
+  :: Int
+  -> ImageButton
+  -> R.Event AppEvent
+  -> Behavior Int
+  -> Behavior SBoard
+  -> MomentIO ()
+setupReactiveCard index imgb appevent bindex bsboard = do
+  let cardevent = filterE (`isButtonEventWithID` ibID imgb) appevent
+  cardbehavior <- dupa bindex bsboard index
+  sinkImageButton imgb cardbehavior
+  reactimate $ fmap debugPrintCard (cardbehavior <@ cardevent)
+
+
+
 runGraphicsClient :: String -> IO ()
 runGraphicsClient username = do
   -- Initialize SDL
@@ -77,25 +102,16 @@ runGraphicsClient username = do
             eup = filterE (`isButtonEventWithID` "right") eButtonClick
             edown = filterE (`isButtonEventWithID` "left") eButtonClick
             estartGame = filterE (`isButtonEventWithID` "startGame") appEvent
-        
+            
         
         cardIndexBehavior <- setupCounter 0 eup edown
 
         bboard <- hold defaultSBoard $ fmap (\(GameStateEvent gs) -> gs) (filterE isGameStateEvent appEvent)
 
-        bcard1 <- dupa cardIndexBehavior bboard 0 
-        bcard2 <- dupa cardIndexBehavior bboard 1 
-        bcard3 <- dupa cardIndexBehavior bboard 2 
-        bcard4 <- dupa cardIndexBehavior bboard 3 
+        mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent cardIndexBehavior bboard)
+            $ zip [0..] handcards
 
-
-        sinkImageButton handcard1 bcard1
-        sinkImageButton handcard2 bcard2
-        sinkImageButton handcard3 bcard3
-        sinkImageButton handcard4 bcard4
         sinkStaticText offsettxt $ fmap show cardIndexBehavior
-        
-        
         reactimate $ fmap (`startGame` outchan) estartGame
 
   -- network <- setupNetwork appEventSource 
@@ -106,14 +122,6 @@ runGraphicsClient username = do
   eventLoop renderer appEventSource widgets inchan outchan tileset
 
   where
-  dupa :: Behavior Int -> Behavior SBoard -> Int -> MomentIO (Behavior Card)
-  dupa bint bboard initialIndex = return $
-      liftA2 (\offset gs ->
-                let index = offset + initialIndex
-                in if index < 0
-                then defaultCard 
-                else maybe defaultCard id (myHand gs !? index)
-            ) bint bboard
 
 
   startGame :: AppEvent -> Chan Message -> IO ()
@@ -158,7 +166,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
     let loop = do
           -- Events
           events <- pollEvents
-          handleSDLEvent (fire eventSource) buttons events
+          handleSDLEvent (fire eventSource) widgets events
           let qPressed = any eventIsQPress events
 
           -- Rendering
@@ -182,11 +190,15 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
 {-----------------------------------------------------------------------------
     Program logic
 ------------------------------------------------------------------------------}
-handleSDLEvent :: (AppEvent -> IO ()) -> [Button] -> [SDL.Event] -> IO ()
-handleSDLEvent fireEvent buttons events = do
+handleSDLEvent :: (AppEvent -> IO ()) -> [Widget] -> [SDL.Event] -> IO ()
+handleSDLEvent fireEvent widgets events = do
+  let buttons = filterButtons widgets
+  let staticTexts = filterStaticText widgets
+  let imgButtons = filterImageButton widgets
   -- Handle key press
   let mouseEvents = collectMousePressedEvents events 
   mapM_ (\e -> executeButtons (mousePos e) buttons) mouseEvents
+  mapM_ (\e -> executeImgButtons (mousePos e) imgButtons) mouseEvents
     
   where
     executeButtons :: V2 Int -> [Button] -> IO ()
@@ -197,6 +209,13 @@ handleSDLEvent fireEvent buttons events = do
             (fireEvent $ ButtonClickEvent $ buttonID b)) 
         bs
 
+    executeImgButtons :: V2 Int -> [ImageButton] -> IO ()
+    executeImgButtons p bs = do
+      mapM_ (\b -> 
+              when 
+                (isWidgetHovered b p) 
+                (fireEvent $ ButtonClickEvent $ ibID b)
+            ) bs
 
 
 setupCounter :: Int -> R.Event AppEvent  -> R.Event AppEvent -> MomentIO (Behavior Int)

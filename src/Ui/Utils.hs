@@ -120,6 +120,29 @@ getKeyCode event =
     UI  
 ------------------------------------------------------------------------------}
 
+class WidgetInteraction a where
+  isWidgetHovered :: a -> V2 Int -> Bool 
+  isWidgetClicked :: a -> SDL.EventPayload -> Bool
+
+instance WidgetInteraction Button where
+  isWidgetHovered (Button _ _ (V2 x y) (V2 w h)) mpos = isPointInRect mpos (x, y, w, h)
+
+  isWidgetClicked button (MouseButtonEvent mouseEv) =
+    SDL.mouseButtonEventMotion mouseEv == Pressed &&
+    isWidgetHovered button (mousePos mouseEv) 
+  isWidgetClicked _ _ = False
+
+instance WidgetInteraction ImageButton where
+  isWidgetHovered (ImageButton _ _ (V2 x y) (V2 w h) _) mpos = 
+    case map fromIntegral [x, y, w, h] of
+      [x', y', w', h'] -> isPointInRect mpos (x', y', w', h')
+      _ -> False
+
+  isWidgetClicked imgButton (MouseButtonEvent mouseEv) =
+    SDL.mouseButtonEventMotion mouseEv == Pressed &&
+    isWidgetHovered imgButton (mousePos mouseEv) 
+  isWidgetClicked _ _ = False
+
 isPointInRect :: V2 Int -> (Int, Int, Int, Int) -> Bool
 isPointInRect (V2 px py) (rx, ry, rw, rh) =
   px >= rx && px <= rx + rw &&
@@ -139,6 +162,7 @@ mousePos e =
   let SDL.P (V2 x y) = SDL.mouseButtonEventPos e in
   V2 (fromIntegral x) (fromIntegral y)
 
+-- getWidgetID :: Widget -> String 
 
 createImageButton 
   :: String 
@@ -368,6 +392,9 @@ isButtonEventWithID _ _ = False
 isGameStateEvent :: AppEvent -> Bool
 isGameStateEvent (GameStateEvent _) = True
 isGameStateEvent _ = False
+
+isEventWithID :: AppEvent -> String -> Bool
+isEventWithID (ButtonClickEvent bid) bid' = bid == bid'
 {-----------------------------------------------------------------------------
     Graphics
 ------------------------------------------------------------------------------}
