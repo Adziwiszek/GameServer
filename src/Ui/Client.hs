@@ -3,6 +3,7 @@
 
 module Ui.Client (runGraphicsClient) where
 import Data.Maybe (listToMaybe)
+import Data.IORef
 import Control.Concurrent
 import Control.Monad.State
 -- import Control.Monad (when, unless)
@@ -20,12 +21,13 @@ import Ui.Types
 import Ui.Utils
 import Ui.Graphics
 import Client (startUiClient)
+import Uno (defaultCard)
 import Types
 
+  
 
 (!?) :: [a] -> Int -> Maybe a
 (!?) xs n = listToMaybe $ drop n xs
-
 
 changeCardNum :: Card -> Int -> Card
 changeCardNum (Card (Number x, col)) y = Card (Number (x + y), col)
@@ -50,10 +52,10 @@ runGraphicsClient username = do
   let c = Card (Number 9, Blue)
   let srcRect = cardToTile c
 
-  handcard1 <- createImageButton "handcard1" srcRect (V2 100 420) (V2 100 150)
-  handcard2 <- createImageButton "handcard2" srcRect (V2 250 420) (V2 100 150)
-  handcard3 <- createImageButton "handcard3" srcRect (V2 400 420) (V2 100 150)
-  handcard4 <- createImageButton "handcard4" srcRect (V2 550 420) (V2 100 150)
+  handcard1 <- createImageButton "handcard1" srcRect (V2 100 420) (V2 100 150) 0
+  handcard2 <- createImageButton "handcard2" srcRect (V2 250 420) (V2 100 150) 1
+  handcard3 <- createImageButton "handcard3" srcRect (V2 400 420) (V2 100 150) 2
+  handcard4 <- createImageButton "handcard4" srcRect (V2 550 420) (V2 100 150) 3
 
   let handcards = 
         [ handcard1
@@ -84,12 +86,15 @@ runGraphicsClient username = do
             edown = filterE (`isButtonEventWithID` "left") eButtonClick
             estartGame = filterE (`isButtonEventWithID` "startGame") appEvent
         
+        card1index <- setupCounter 0 eup edown 
 
         testbeh <- setupimage eup edown
-        bcard1 <- setupgamecard appEvent 1
-        bcard2 <- setupgamecard appEvent 2
-        bcard3 <- setupgamecard appEvent 3
-        bcard4 <- setupgamecard appEvent 4
+        bcard1 <- setupgamecard appEvent (ibCard handcard1)
+        bcard2 <- setupgamecard appEvent (ibCard handcard2) 
+        bcard3 <- setupgamecard appEvent (ibCard handcard3) 
+        bcard4 <- setupgamecard appEvent (ibCard handcard4) 
+
+        sinkBehavior (updateImageButtonCard handcard1) card1index
 
         sinkImageButton handcard1 bcard1
         sinkImageButton handcard2 bcard2
@@ -107,7 +112,7 @@ runGraphicsClient username = do
   where
   setupimage :: R.Event AppEvent  -> R.Event AppEvent -> MomentIO (Behavior Card)
   setupimage eup edown =
-              accumB (Card (Number 0, Red)) $ unions
+              accumB defaultCard $ unions
               [ (`changeCardNum` 1) <$ eup
               , (`changeCardNum` (-1)) <$ edown
               ]
@@ -118,14 +123,15 @@ runGraphicsClient username = do
       writeChan outchan $ Message Server (Types.Text ":start ") 0
     _ -> return ()
 
-  setupgamecard :: R.Event AppEvent -> Int -> MomentIO (Behavior Card)
-  setupgamecard serverevent n = do
+  setupgamecard :: R.Event AppEvent -> IORef Int -> MomentIO (Behavior Card)
+  setupgamecard serverevent nref = do
+    n <- liftIO $ readIORef nref
     let egamestate = fmap (prepareCard n) (filterE isGameStateEvent serverevent)
-    hold (Card (Number 0, Red)) egamestate
+    hold defaultCard egamestate
 
   prepareCard n (GameStateEvent gs) = case myHand gs !? n of
     Just c -> c
-    Nothing -> Card (Number 0, Red)
+    Nothing -> defaultCard
   prepareCard _ _ = undefined
 
 
@@ -153,6 +159,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
           putStrLn str
         Types.GameState state -> do
           putStrLn "received game state"
+          print state
           fire eventSource $ GameStateEvent state
           return ()
         _ -> return ()

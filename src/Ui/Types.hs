@@ -48,6 +48,7 @@ data ImageButton = ImageButton
   , ibSrcRect :: IORef (SDL.Rectangle CInt)
   , ibPos  :: V2 CInt
   , ibSize :: V2 CInt
+  , ibCard :: IORef Int
   }
 
 data StaticText = StaticText

@@ -57,6 +57,7 @@ data CardRole
   | Switch
   | ChangeColor CardColor
   | AddColorless (Int, CardColor)
+  | Blank
   | SelfDraw
   | EndTurn
   deriving (Eq, Show, Generic)

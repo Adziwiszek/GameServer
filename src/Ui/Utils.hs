@@ -50,7 +50,11 @@ makeColorMap col =
 colorTextureTileMap :: [(Card, (CInt, CInt))]
 colorTextureTileMap = 
   let colorMaps = concatMap makeColorMap [Red, Green, Yellow, Blue]
-  in colorMaps ++ [(Card (AddColorless (4, Null), Colorless), (0, 4)), (Card (ChangeColor Null, Colorless), (1, 4))]
+  in colorMaps ++ 
+    [ (Card (AddColorless (4, Null), Colorless), (0, 4))
+    , (Card (ChangeColor Null, Colorless), (1, 4))
+    , (Card (Blank, Colorless), (2, 4))
+    ]
 
 getTileRect :: (CInt, CInt) -> SDL.Rectangle CInt
 getTileRect (x, y) = Rectangle 
@@ -140,10 +144,12 @@ createImageButton
   -> SDL.Rectangle CInt
   -> V2 CInt 
   -> V2 CInt 
+  -> Int
   -> IO ImageButton
-createImageButton bId srcRect pos bsize = do
+createImageButton bId srcRect pos bsize cardid = do
   rectRef <- newIORef srcRect 
-  return $ ImageButton bId rectRef pos bsize
+  cardidRef <- newIORef cardid
+  return $ ImageButton bId rectRef pos bsize cardidRef
 
 createTextTexture :: MonadIO m => String -> Color -> Font -> SDL.Renderer -> m Texture
 createTextTexture text color font renderer = do
@@ -172,22 +178,24 @@ createButton text bID pos = do
   return $ Button bID txt pos (V2 rW rH)
 
 
+sinkBehavior :: (a -> IO ()) -> Behavior a -> MomentIO ()
+sinkBehavior updateFunc beh = do
+  initialVal <- valueBLater beh
+  liftIOLater $ updateFunc initialVal
+  e <- changes beh
+  reactimate' $ fmap updateFunc <$> e
+
+
+
 -- we connect widget to the behavior, when the string changes we update the text
 sinkStaticText :: StaticText -> Behavior String -> MomentIO ()
-sinkStaticText st b = do
-  x <- valueBLater b
-  liftIOLater $ updateStaticText st x
-  e <- changes b
-  reactimate' $ fmap (updateStaticText st) <$> e
-
+sinkStaticText st = sinkBehavior (updateStaticText st)
 
 -- connecting image button to the behavior
 sinkImageButton :: ImageButton -> Behavior Card -> MomentIO ()
-sinkImageButton imgb b = do
-  card <- valueBLater b
-  liftIOLater $ updateImageButtonTile imgb card
-  e <- changes b
-  reactimate' $ fmap (updateImageButtonTile imgb) <$> e
+sinkImageButton imgb = sinkBehavior (updateImageButtonTile imgb)
+
+
 
 
 getTextBackgroundSize :: Text -> IO (V2 Int)
@@ -215,8 +223,11 @@ updateStaticText staticText newString = do
 
 updateImageButtonTile :: ImageButton -> Card -> IO ()
 updateImageButtonTile imgb card = do
-  oldRect <- readIORef (ibSrcRect imgb)
   writeIORef (ibSrcRect imgb) $ cardToTile card
+
+updateImageButtonCard :: ImageButton -> Int -> IO ()
+updateImageButtonCard imgb n = do
+  writeIORef (ibCard imgb) n
 
 filterButtons :: [Widget] -> [Button]
 filterButtons = concatMap transWidget

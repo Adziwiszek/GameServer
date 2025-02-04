@@ -1,8 +1,9 @@
-module Uno (game, runNetworkGame, parseCards) where 
+module Uno (game, runNetworkGame, parseCards, defaultCard) where 
 
 import Data.List (find)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (listToMaybe)
 import Control.Monad.Cont
 import Control.Monad.Random
 import System.IO
@@ -34,7 +35,10 @@ instance GetBoardInfo Players where
   getCurrentPlayer (Players (_, right)) = head right
 
 startingDeckSize :: Int 
-startingDeckSize = 5
+startingDeckSize = 2
+
+defaultCard :: Card
+defaultCard = Card (Blank, Colorless)
 
 remove :: Eq a => a -> [a] -> [a]
 remove e xs = rm xs []
@@ -51,6 +55,13 @@ cardMember _ [] = False
 cardMember (Card (ChangeColor _, _)) (Card (ChangeColor _, _):_) = True
 cardMember (Card (AddColorless _, _)) (Card (AddColorless _, _):_) = True
 cardMember a (x:xs) = a == x || cardMember a xs
+
+(!?) :: [a] -> Int -> Maybe a
+(!?) xs n = listToMaybe $ drop n xs
+
+changeCardNum :: Card -> Int -> Card
+changeCardNum (Card (Number x, col)) y = Card (Number (x + y), col)
+changeCardNum _ _ = undefined
 
 takeOut :: Int -> [a] -> ([a], [a])
 takeOut n xs = (take n xs, drop (n + 1) xs)
