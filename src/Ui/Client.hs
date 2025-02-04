@@ -83,8 +83,6 @@ runGraphicsClient username = do
 
         bboard <- hold defaultSBoard $ fmap (\(GameStateEvent gs) -> gs) (filterE isGameStateEvent appEvent)
 
-
-
         bcard1 <- dupa cardIndexBehavior bboard 0 
         bcard2 <- dupa cardIndexBehavior bboard 1 
         bcard3 <- dupa cardIndexBehavior bboard 2 
@@ -112,15 +110,11 @@ runGraphicsClient username = do
   dupa bint bboard initialIndex = return $
       liftA2 (\offset gs ->
                 let index = offset + initialIndex
-                in maybe defaultCard id (myHand gs !? index)
+                in if index < 0
+                then defaultCard 
+                else maybe defaultCard id (myHand gs !? index)
             ) bint bboard
 
-  setupimage :: R.Event AppEvent  -> R.Event AppEvent -> MomentIO (Behavior Card)
-  setupimage eup edown =
-              accumB defaultCard $ unions
-              [ (`changeCardNum` 1) <$ eup
-              , (`changeCardNum` (-1)) <$ edown
-              ]
 
   startGame :: AppEvent -> Chan Message -> IO ()
   startGame appevent outchan = case appevent of 
@@ -128,22 +122,6 @@ runGraphicsClient username = do
       writeChan outchan $ Message Server (Types.Text ":start ") 0
     _ -> return ()
 
-  setupgamecard 
-    :: R.Event AppEvent 
-    -> Behavior Int
-    -> Int
-    -> MomentIO (Behavior Card)
-  setupgamecard serverevent offsetB relativeIndex = do
-    let ecard = (\offset (GameStateEvent gs) ->
-                    let index = offset + relativeIndex
-                    in maybe defaultCard id (myHand gs !? index)
-                ) <$> offsetB <@> (filterE isGameStateEvent serverevent)
-    hold defaultCard ecard
-
-  prepareCard n (GameStateEvent gs) = case myHand gs !? n of
-    Just c -> c
-    Nothing -> defaultCard
-  prepareCard _ _ = undefined
 
 
 
@@ -168,10 +146,10 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
       case content msg of
         Types.Text str -> do
           putStrLn str
-        Types.GameState state -> do
+        Types.GameState gs -> do
           putStrLn "received game state"
-          print state
-          fire eventSource $ GameStateEvent state
+          print gs
+          fire eventSource $ GameStateEvent gs
           return ()
         _ -> return ()
       loop
