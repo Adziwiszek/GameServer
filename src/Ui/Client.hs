@@ -6,10 +6,6 @@ import Data.Maybe (listToMaybe)
 import Data.IORef
 import Control.Concurrent
 import Control.Monad.State
--- import Control.Monad (when, unless)
--- import Control.Monad.Fix (fix)
---import Control.Exception (bracket, handle, SomeException(..), displayException)
--- import Foreign.C.Types (CInt)
 import SDL
 import SDL.Font
 import SDL.Image (loadTexture)
@@ -21,8 +17,9 @@ import Ui.Types
 import Ui.Utils
 import Ui.Graphics
 import Client (startUiClient)
-import Uno (defaultCard)
 import Uno.Common.Types
+import Uno.Utils
+import Uno.Defaults ( defaultCard )
 import Types
 
   
@@ -30,9 +27,6 @@ import Types
 (!?) :: [a] -> Int -> Maybe a
 (!?) xs n = listToMaybe $ drop n xs
 
-changeCardNum :: Card -> Int -> Card
-changeCardNum (Card (Number x, col)) y = Card (Number (x + y), col)
-changeCardNum _ _ = undefined
 
 runGraphicsClient :: String -> IO ()
 runGraphicsClient username = do
