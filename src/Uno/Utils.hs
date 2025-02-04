@@ -98,6 +98,13 @@ reshuffleDeck board = do
                   drawPile     = newDrawPile}
 
 
+currentPlayerWaits :: Board -> Bool
+currentPlayerWaits board = 
+  let currentID = playerID $ getCurrentPlayer board 
+  in skipTurns board > 0 || member currentID (skipPlayers board)
+
+
+
 {-----------------------------------------------------------------------------
     Cards
  -----------------------------------------------------------------------------}
@@ -115,6 +122,10 @@ getTopCard = head . discardPile
 changeCardNum :: Card -> Int -> Card
 changeCardNum (Card (Number x, col)) y = Card (Number (x + y), col)
 changeCardNum _ _ = undefined
+
+
+addToDiscardPile :: Monad m => Board -> Card -> m Board
+addToDiscardPile b c = return $ b {discardPile = c : discardPile b}
 
 
 cardMember :: Card -> [Card] -> Bool

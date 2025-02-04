@@ -12,7 +12,7 @@ import Data.Functor
 
 import Message
 import Types
-import Uno (runNetworkGame)
+import Uno.Uno (runNetworkGame)
 
 type GameStarted = MVar Bool
 type ServerPlayers = MVar [(Int, String, Chan Message, Handle)]

@@ -21,7 +21,6 @@ executable GameServer
   other-modules:       Server,
                        Client,
                        Message,
-                       Uno,
                        Types,
                        Utils,
                        Ui.Types,
