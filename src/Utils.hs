@@ -11,19 +11,15 @@ remove e xs = rm xs []
     rm [] _ = xs
     rm (x:xs') acc = if e == x then reverse acc ++ xs' else rm xs' (x:acc) 
 
-
 member :: Eq a => a -> [a] -> Bool
 member _ [] = False
 member a (x:xs) = a == x || member a xs
 
-
 (!?) :: [a] -> Int -> Maybe a
 (!?) xs n = listToMaybe $ drop n xs
 
-
 takeOut :: Int -> [a] -> ([a], [a])
 takeOut n xs = (take n xs, drop (n + 1) xs)
-
 
 shuffle :: (RandomGen g) => [a] -> Rand g [a]
 shuffle [] = return []

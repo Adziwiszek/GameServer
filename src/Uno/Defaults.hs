@@ -4,13 +4,22 @@ import Uno.Common.Types
 import Uno.Types
 
 
-startingDeckSize :: Int 
-startingDeckSize = 2
+defaultSBoard :: SBoard
+defaultSBoard = SBoard 
+  0 
+  "" 
+  (SPlayers []) 
+  (Card (Blank, Colorless))
+  DLeft
+  []
+  ""
+  0
 
+startingDeckSize :: Int 
+startingDeckSize = 7
 
 defaultCard :: Card
 defaultCard = Card (Blank, Colorless)
-
 
 generateStartingDeck :: [Card]
 generateStartingDeck = helper ++ [Card(ChangeColor Null, Colorless) | _ <- ([1..2] :: [Int])] ++ [Card(AddColorless (4, Null), Colorless) | _ <- ([1..2] :: [Int])]

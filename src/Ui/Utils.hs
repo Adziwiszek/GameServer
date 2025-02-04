@@ -293,6 +293,7 @@ sdlButtonEventToAppEvent _ = Nothing
 buttonClickEvent :: WrappedEvent -> R.Event AppEvent
 buttonClickEvent = filterJust . fmap sdlButtonEventToAppEvent
 
+
 keyEvent :: WrappedEvent -> WrappedEvent
 keyEvent = filterE isKey
   where

@@ -19,13 +19,10 @@ import Ui.Graphics
 import Client (startUiClient)
 import Uno.Common.Types
 import Uno.Utils
-import Uno.Defaults ( defaultCard )
+import Uno.Defaults ( defaultCard, defaultSBoard )
 import Types
+import Utils
 
-  
-
-(!?) :: [a] -> Int -> Maybe a
-(!?) xs n = listToMaybe $ drop n xs
 
 
 runGraphicsClient :: String -> IO ()
@@ -64,14 +61,14 @@ runGraphicsClient username = do
   bup   <- createButton "<-" "left" (V2 50 450)
   bdown <- createButton "->" "right" (V2 50 500)
   name1 <- createStaticText "myname" username (V2 400 100)
+  offsettxt <- createStaticText "offset" "0" (V2 300 100)
 
   let widgets :: [Widget]
       widgets = [WButton bup, WButton bdown, 
         WStaticText name1,
-        WButton bstartGame] ++ map WImgButton handcards
+        WButton bstartGame, WStaticText offsettxt] ++ map WImgButton handcards
   appEventSource <- createAppEventSource
 
-  -- sdlEventSource <- SDLEventSource <$> newAddHandler
 
   let networkDescription :: MomentIO ()
       networkDescription = do
@@ -81,20 +78,26 @@ runGraphicsClient username = do
             edown = filterE (`isButtonEventWithID` "left") eButtonClick
             estartGame = filterE (`isButtonEventWithID` "startGame") appEvent
         
-        card1index <- setupCounter 0 eup edown 
+        
+        cardIndexBehavior <- setupCounter 0 eup edown
 
-        testbeh <- setupimage eup edown
-        bcard1 <- setupgamecard appEvent (ibCard handcard1)
-        bcard2 <- setupgamecard appEvent (ibCard handcard2) 
-        bcard3 <- setupgamecard appEvent (ibCard handcard3) 
-        bcard4 <- setupgamecard appEvent (ibCard handcard4) 
+        bboard <- hold defaultSBoard $ fmap (\(GameStateEvent gs) -> gs) (filterE isGameStateEvent appEvent)
 
-        sinkBehavior (updateImageButtonCard handcard1) card1index
+
+
+        bcard1 <- dupa cardIndexBehavior bboard 0 
+        bcard2 <- dupa cardIndexBehavior bboard 1 
+        bcard3 <- dupa cardIndexBehavior bboard 2 
+        bcard4 <- dupa cardIndexBehavior bboard 3 
+
 
         sinkImageButton handcard1 bcard1
         sinkImageButton handcard2 bcard2
         sinkImageButton handcard3 bcard3
         sinkImageButton handcard4 bcard4
+        sinkStaticText offsettxt $ fmap show cardIndexBehavior
+        
+        
         reactimate $ fmap (`startGame` outchan) estartGame
 
   -- network <- setupNetwork appEventSource 
@@ -105,6 +108,13 @@ runGraphicsClient username = do
   eventLoop renderer appEventSource widgets inchan outchan tileset
 
   where
+  dupa :: Behavior Int -> Behavior SBoard -> Int -> MomentIO (Behavior Card)
+  dupa bint bboard initialIndex = return $
+      liftA2 (\offset gs ->
+                let index = offset + initialIndex
+                in maybe defaultCard id (myHand gs !? index)
+            ) bint bboard
+
   setupimage :: R.Event AppEvent  -> R.Event AppEvent -> MomentIO (Behavior Card)
   setupimage eup edown =
               accumB defaultCard $ unions
@@ -118,11 +128,17 @@ runGraphicsClient username = do
       writeChan outchan $ Message Server (Types.Text ":start ") 0
     _ -> return ()
 
-  setupgamecard :: R.Event AppEvent -> IORef Int -> MomentIO (Behavior Card)
-  setupgamecard serverevent nref = do
-    n <- liftIO $ readIORef nref
-    let egamestate = fmap (prepareCard n) (filterE isGameStateEvent serverevent)
-    hold defaultCard egamestate
+  setupgamecard 
+    :: R.Event AppEvent 
+    -> Behavior Int
+    -> Int
+    -> MomentIO (Behavior Card)
+  setupgamecard serverevent offsetB relativeIndex = do
+    let ecard = (\offset (GameStateEvent gs) ->
+                    let index = offset + relativeIndex
+                    in maybe defaultCard id (myHand gs !? index)
+                ) <$> offsetB <@> (filterE isGameStateEvent serverevent)
+    hold defaultCard ecard
 
   prepareCard n (GameStateEvent gs) = case myHand gs !? n of
     Just c -> c
