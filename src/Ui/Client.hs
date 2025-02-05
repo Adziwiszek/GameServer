@@ -18,20 +18,18 @@ import Ui.Utils
 import Ui.Graphics
 import Client (startUiClient)
 import Uno.Common.Types
-import Uno.Utils
 import Uno.Defaults ( defaultCard, defaultSBoard )
-import Types
 import Utils
+import Types
 
 
-
-dupa :: Behavior Int -> Behavior SBoard -> Int -> MomentIO (Behavior Card)
+dupa :: Behavior Int -> Behavior SBoard -> Int -> MomentIO (Behavior (Int, Card))
 dupa bint bboard initialIndex = return $
     liftA2 (\offset gs ->
               let index = offset + initialIndex
-              in if index < 0
-              then defaultCard 
-              else maybe defaultCard id (myHand gs !? index)
+              in if index < 0 || index >= length (myHand gs)
+              then (-1, defaultCard)
+              else (index, myHand gs !! index)
           ) bint bboard
 
 
@@ -41,14 +39,30 @@ setupReactiveCard
   -> R.Event AppEvent
   -> Behavior Int
   -> Behavior SBoard
+  -> EventSource AppEvent
   -> MomentIO ()
-setupReactiveCard index imgb appevent bindex bsboard = do
+setupReactiveCard index imgb appevent bindex bsboard eventsource = do
   let cardevent = filterE (`isButtonEventWithID` ibID imgb) appevent
   cardbehavior <- dupa bindex bsboard index
-  sinkImageButton imgb cardbehavior
-  reactimate $ fmap debugPrintCard (cardbehavior <@ cardevent)
+  sinkImageButton imgb $ fmap snd cardbehavior
+  reactimate $ fmap helpFire (fmap fst cardbehavior <@ cardevent)
+  reactimate $ fmap print (fmap fst cardbehavior <@ cardevent)
 
+  where
+    helpFire n = fire eventsource $ ToggleCardChoice n
 
+xorSet :: Eq a => Maybe a -> [a] -> [a]
+xorSet Nothing xs = xs
+xorSet (Just x) xs = if x `elem` xs 
+                      then remove x xs 
+                      else x : xs
+
+toggleCardChoice :: R.Event AppEvent -> R.Event ([Int] -> [Int])
+toggleCardChoice = fmap makexor . filterE isToggleCardChoiceEvent
+  where
+    makexor (ToggleCardChoice n) = xorSet (Just n)
+    makexor _ = id
+  
 
 runGraphicsClient :: String -> IO ()
 runGraphicsClient username = do
@@ -56,7 +70,7 @@ runGraphicsClient username = do
   initializeAll
   SDL.Font.initialize
   -- Create window and renderer
-  window <- createWindow "My SDL Application" defaultWindow
+  window <- createWindow "Uno online!" defaultWindow
   renderer <- createRenderer window (-1) defaultRenderer
 
   inchan  :: Chan Message <- newChan 
@@ -86,10 +100,11 @@ runGraphicsClient username = do
   bup   <- createButton "<-" "left" (V2 50 450)
   bdown <- createButton "->" "right" (V2 50 500)
   name1 <- createStaticText "myname" username (V2 400 100)
+  bsendmove <- createButton "send" "send" (V2 200 100)
   offsettxt <- createStaticText "offset" "0" (V2 300 100)
 
   let widgets :: [Widget]
-      widgets = [WButton bup, WButton bdown, 
+      widgets = [WButton bup, WButton bdown, WButton bsendmove,
         WStaticText name1,
         WButton bstartGame, WStaticText offsettxt] ++ map WImgButton handcards
   appEventSource <- createAppEventSource
@@ -102,17 +117,23 @@ runGraphicsClient username = do
             eup = filterE (`isButtonEventWithID` "right") eButtonClick
             edown = filterE (`isButtonEventWithID` "left") eButtonClick
             estartGame = filterE (`isButtonEventWithID` "startGame") appEvent
+            esend = filterE (`isButtonEventWithID` "send") appEvent
+
             
+        bselectedCards <- accumB [] $ toggleCardChoice appEvent
         
         cardIndexBehavior <- setupCounter 0 eup edown
 
         bboard <- hold defaultSBoard $ fmap (\(GameStateEvent gs) -> gs) (filterE isGameStateEvent appEvent)
 
-        mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent cardIndexBehavior bboard)
+        mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent cardIndexBehavior bboard appEventSource)
             $ zip [0..] handcards
 
         sinkStaticText offsettxt $ fmap show cardIndexBehavior
         reactimate $ fmap (`startGame` outchan) estartGame
+
+        reactimate $ fmap print (bselectedCards <@ esend)
+
 
   -- network <- setupNetwork appEventSource 
   network <- compile networkDescription
@@ -172,7 +193,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
           -- Rendering
           rendererDrawColor renderer $= V4 0 0 255 255
           clear renderer
-          renderButtons renderer $ zip buttons [white, white, white]
+          renderButtons renderer $ zip buttons [white, white, white, white]
           renderStaticTexts renderer staticTexts
           renderImageButtons renderer textureass imgButtons
 

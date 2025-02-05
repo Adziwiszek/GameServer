@@ -393,6 +393,10 @@ isGameStateEvent :: AppEvent -> Bool
 isGameStateEvent (GameStateEvent _) = True
 isGameStateEvent _ = False
 
+isToggleCardChoiceEvent :: AppEvent -> Bool
+isToggleCardChoiceEvent (ToggleCardChoice _) = True
+isToggleCardChoiceEvent _ = False
+
 isEventWithID :: AppEvent -> String -> Bool
 isEventWithID (ButtonClickEvent bid) bid' = bid == bid'
 {-----------------------------------------------------------------------------
