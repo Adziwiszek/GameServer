@@ -106,20 +106,19 @@ runGraphicsClient username = do
         , handcard4
         ]
 
-  topCard <- createImageButton "topCard" srcRect (V2 250 200) (V2 100 150) (-1)
+
+  topCard <- createImageButton "topCard" srcRect (V2 340 200) (V2 100 150) (-1)
 
   bstartGame <- createButton "start" "startGame" (V2 0 0) white
-
   bup   <- createButton "<-" "left" (V2 50 450) white
   bdown <- createButton "->" "right" (V2 50 500) white
-  bsendmove <- createButton "send" "send" (V2 200 100) white
-  name1 <- createStaticText "myname" username (V2 400 100)
-  offsettxt <- createStaticText "offset" "0" (V2 300 100)
+  bsendmove <- createButton "send" "send" (V2 700 500) white
+  name1 <- createStaticText "myname" username (V2 700 420)
 
   let widgets :: [Widget]
       widgets = [WButton bup, WButton bdown, WButton bsendmove,
         WStaticText name1, WImgButton topCard,
-        WButton bstartGame, WStaticText offsettxt] ++ map WImgButton handcards
+        WButton bstartGame] ++ map WImgButton handcards
   appEventSource <- createAppEventSource
 
 
@@ -145,7 +144,6 @@ runGraphicsClient username = do
         mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent appEventSource cardIndexBehavior bboard bselectedCards)
             $ zip [0..] handcards
 
-        sinkStaticText offsettxt $ fmap show cardIndexBehavior
         sinkImageButton topCard btopcard
 
         reactimate $ fmap (`startGame` outchan) estartGame
