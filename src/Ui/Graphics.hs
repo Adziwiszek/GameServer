@@ -81,7 +81,7 @@ renderImageButton renderer texture imBut = do
 
   where
     drawShadow = do 
-      let shadowThickness = 20
+      let shadowThickness = 10
           (V2 x y) = ibPos imBut
           (V2 w h) = ibSize imBut
           topleft = V2 (x - shadowThickness) (y - shadowThickness)

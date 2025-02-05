@@ -71,9 +71,6 @@ setupReactiveCard index imgb appevent eventsource bindex bsboard  bselectedCards
       writeIORef (ibSelected imgb) $ not currentselect
 
     scrollShadow delta (currentindex, activecards) = do
-      cardid <- readIORef $ ibCard imgb
-      putStrLn $ "my id = " ++ show cardid
-          ++ "\ncard that im showing = " ++ show (currentindex + delta) ++ "\n"
       writeIORef (ibSelected imgb) $ (currentindex + delta) `elem` activecards 
 
 
@@ -95,8 +92,7 @@ runGraphicsClient username = do
 
   tileset <- loadTexture renderer "unocards.png"
 
-  let c = Card (Number 9, Blue)
-  let srcRect = cardToTile c
+  let srcRect = cardToTile defaultCard
 
   handcard1 <- createImageButton "handcard1" srcRect (V2 100 420) (V2 100 150) 0
   handcard2 <- createImageButton "handcard2" srcRect (V2 250 420) (V2 100 150) 1
@@ -110,6 +106,8 @@ runGraphicsClient username = do
         , handcard4
         ]
 
+  topCard <- createImageButton "topCard" srcRect (V2 250 200) (V2 100 150) (-1)
+
   bstartGame <- createButton "start" "startGame" (V2 0 0)
 
   bup   <- createButton "<-" "left" (V2 50 450)
@@ -120,7 +118,7 @@ runGraphicsClient username = do
 
   let widgets :: [Widget]
       widgets = [WButton bup, WButton bdown, WButton bsendmove,
-        WStaticText name1,
+        WStaticText name1, WImgButton topCard,
         WButton bstartGame, WStaticText offsettxt] ++ map WImgButton handcards
   appEventSource <- createAppEventSource
 
@@ -133,20 +131,24 @@ runGraphicsClient username = do
             edown = filterE (`isButtonEventWithID` "left") eButtonClick
             estartGame = filterE (`isButtonEventWithID` "startGame") appEvent
             esend = filterE (`isButtonEventWithID` "send") appEvent
+            egamestate = filterE isGameStateEvent appEvent
 
             
         bselectedCards <- accumB [] $ toggleCardChoice appEvent
         
         cardIndexBehavior <- setupCounter 0 eup edown
 
-        bboard <- hold defaultSBoard $ fmap (\(GameStateEvent gs) -> gs) (filterE isGameStateEvent appEvent)
+        bboard <- hold defaultSBoard $ fmap (\(GameStateEvent gs) -> gs) egamestate
+
+        btopcard <- hold defaultCard $ fmap topCardFromEvent egamestate 
 
         mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent appEventSource cardIndexBehavior bboard bselectedCards)
             $ zip [0..] handcards
 
         sinkStaticText offsettxt $ fmap show cardIndexBehavior
-        reactimate $ fmap (`startGame` outchan) estartGame
+        sinkImageButton topCard btopcard
 
+        reactimate $ fmap (`startGame` outchan) estartGame
         reactimate $ fmap print (bselectedCards <@ esend)
 
 
@@ -159,12 +161,15 @@ runGraphicsClient username = do
 
   where
 
-
   startGame :: AppEvent -> Chan Message -> IO ()
   startGame appevent outchan = case appevent of 
     ButtonClickEvent bid -> do
       writeChan outchan $ Message Server (Types.Text ":start ") 0
     _ -> return ()
+
+  topCardFromEvent :: AppEvent -> Card
+  topCardFromEvent (GameStateEvent gs) = discardedCard gs
+  topCardFromEvent _ = defaultCard
 
 
 
