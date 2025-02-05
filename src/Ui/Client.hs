@@ -108,12 +108,12 @@ runGraphicsClient username = do
 
   topCard <- createImageButton "topCard" srcRect (V2 250 200) (V2 100 150) (-1)
 
-  bstartGame <- createButton "start" "startGame" (V2 0 0)
+  bstartGame <- createButton "start" "startGame" (V2 0 0) white
 
-  bup   <- createButton "<-" "left" (V2 50 450)
-  bdown <- createButton "->" "right" (V2 50 500)
+  bup   <- createButton "<-" "left" (V2 50 450) white
+  bdown <- createButton "->" "right" (V2 50 500) white
+  bsendmove <- createButton "send" "send" (V2 200 100) white
   name1 <- createStaticText "myname" username (V2 400 100)
-  bsendmove <- createButton "send" "send" (V2 200 100)
   offsettxt <- createStaticText "offset" "0" (V2 300 100)
 
   let widgets :: [Widget]
@@ -213,7 +213,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
           -- Rendering
           rendererDrawColor renderer $= V4 0 0 255 255
           clear renderer
-          renderButtons renderer $ zip buttons [white, white, white, white]
+          renderButtons renderer buttons 
           renderStaticTexts renderer staticTexts
           renderImageButtons renderer textureass imgButtons
 

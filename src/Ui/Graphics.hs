@@ -13,22 +13,18 @@ import Ui.Types
 import Ui.Utils
 
 -- Rendering ==================================================================
-renderButtons :: Renderer -> [(Button, V4 Int)] -> IO ()
+renderButtons :: Renderer -> [Button] -> IO ()
 renderButtons renderer buttons = do
-  mapM_ helpRender buttons
-
-  where
-    helpRender (b, col) = do
-      SDL.rendererDrawColor renderer $= intTo8WordColor col
-      renderButton renderer b
+  mapM_ (renderButton renderer) buttons
 
 -- Render a single button
 renderButton :: Renderer -> Button -> IO ()
-renderButton renderer (Button _ (Text msg font color padding) (V2 x y) (V2 rW rH)) = do
+renderButton renderer (Button _ (Text msg font fcolor padding) (V2 x y) (V2 rW rH) color) = do
+  SDL.rendererDrawColor renderer $= intTo8WordColor color
   let rect = SDL.Rectangle (SDL.P (V2 x y)) (V2 rW rH) 
   SDL.fillRect renderer (Just $ toCIntRect rect)
   let (V4 w _ n _) = padding
-  textSurface <- SDL.Font.solid font color $ pack msg
+  textSurface <- SDL.Font.solid font fcolor $ pack msg
   textTexture <- SDL.createTextureFromSurface renderer textSurface
   SDL.freeSurface textSurface
   renderTexture renderer textTexture $ V2 (x + w) (y + n)

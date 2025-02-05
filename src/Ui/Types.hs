@@ -31,6 +31,8 @@ data AppEvent
 type Screen = SDL.Surface
 newtype Graphic = Graphic { paintGraphic :: Screen -> IO () }
 
+type GColor = V4 Int
+
 data Text = Text 
   { _textMsg     :: String
   , _textFont    :: Font
@@ -43,6 +45,7 @@ data Button = Button
   , buttonText :: Text
   , buttonPos  :: V2 Int
   , buttonSize :: V2 Int
+  , buttonColor :: GColor
   }
   
 data ImageButton = ImageButton

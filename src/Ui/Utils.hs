@@ -131,7 +131,7 @@ class WidgetInteraction a where
   isWidgetClicked :: a -> SDL.EventPayload -> Bool
 
 instance WidgetInteraction Button where
-  isWidgetHovered (Button _ _ (V2 x y) (V2 w h)) mpos = isPointInRect mpos (x, y, w, h)
+  isWidgetHovered (Button _ _ (V2 x y) (V2 w h) _) mpos = isPointInRect mpos (x, y, w, h)
 
   isWidgetClicked button (MouseButtonEvent mouseEv) =
     SDL.mouseButtonEventMotion mouseEv == Pressed &&
@@ -155,7 +155,7 @@ isPointInRect (V2 px py) (rx, ry, rw, rh) =
   py >= ry && py <= ry + rh
 
 isMouseOnButton :: V2 Int -> Button -> Bool
-isMouseOnButton mpos (Button _ _ (V2 x y) (V2 w h)) = isPointInRect mpos (x, y, w, h)
+isMouseOnButton mpos (Button _ _ (V2 x y) (V2 w h) _) = isPointInRect mpos (x, y, w, h)
 
 isButtonClicked :: Button -> SDL.EventPayload -> Bool
 isButtonClicked button (MouseButtonEvent mouseEv) =
@@ -177,11 +177,11 @@ createImageButton
   -> V2 CInt 
   -> Int
   -> IO ImageButton
-createImageButton bId srcRect pos bsize cardid = do
+createImageButton bId srcRect pos bsize cardid  = do
   rectRef <- newIORef srcRect 
   cardidRef <- newIORef cardid
   selectedRef <- newIORef False 
-  return $ ImageButton bId rectRef pos bsize cardidRef selectedRef
+  return $ ImageButton bId rectRef pos bsize cardidRef selectedRef 
 
 createTextTexture :: MonadIO m => String -> Color -> Font -> SDL.Renderer -> m Texture
 createTextTexture text color font renderer = do
@@ -196,10 +196,10 @@ widgetEvent sdlSource = do
   return $ buttonClickEvent e
 
 getButtonPosition :: Button -> V2 Int
-getButtonPosition (Button _ _ p _) = p
+getButtonPosition (Button _ _ p _ _) = p
 
-createButton :: String -> String -> V2 Int -> IO Button
-createButton text bID pos = do
+createButton :: String -> String -> V2 Int -> GColor -> IO Button
+createButton text bID pos color = do
   font <- SDL.Font.load "Roboto-Black.ttf" 20
   textSurface <- SDL.Font.solid font fBlack $ pack text
   (V2 tW tH) <- SDL.surfaceDimensions textSurface
@@ -207,7 +207,7 @@ createButton text bID pos = do
   let (V4 w e n s) = _textPadding txt
   let rW = fromIntegral tW + w + e
   let rH = fromIntegral tH + n + s
-  return $ Button bID txt pos (V2 rW rH)
+  return $ Button bID txt pos (V2 rW rH) color
 
 
 sinkBehavior :: (a -> IO ()) -> Behavior a -> MomentIO ()
