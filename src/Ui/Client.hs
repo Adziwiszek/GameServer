@@ -23,14 +23,18 @@ import Utils
 import Types
 
 
-dupa :: Behavior Int -> Behavior SBoard -> Int -> MomentIO (Behavior (Int, Card))
-dupa bint bboard initialIndex = return $
-    liftA2 (\offset gs ->
-              let index = offset + initialIndex
-              in if index < 0 || index >= length (myHand gs)
-              then (-1, defaultCard)
-              else (index, myHand gs !! index)
-          ) bint bboard
+dupa :: Behavior Int -> Behavior SBoard ->  Int -> MomentIO (Behavior (Int, Card))
+dupa bint bboard  initialIndex = return $
+    liftA2 findCardToShow bint bboard  
+
+  where
+    findCardToShow :: Int -> SBoard -> (Int, Card)
+    findCardToShow offset gs  =
+      let index = offset + initialIndex
+      in if index < 0 || index >= length (myHand gs)
+      then (-1, defaultCard)
+      else (index, myHand gs !! index)
+
 
 
 setupReactiveCard
@@ -45,24 +49,19 @@ setupReactiveCard index imgb appevent bindex bsboard eventsource = do
   let cardevent = filterE (`isButtonEventWithID` ibID imgb) appevent
   cardbehavior <- dupa bindex bsboard index
   sinkImageButton imgb $ fmap snd cardbehavior
-  reactimate $ fmap helpFire (fmap fst cardbehavior <@ cardevent)
-  reactimate $ fmap print (fmap fst cardbehavior <@ cardevent)
+
+  let bcurrnetindex = fmap fst cardbehavior
+
+  reactimate $ fmap helpFire $ bcurrnetindex <@ cardevent
+  reactimate $ fmap print $ bcurrnetindex <@ cardevent
 
   where
-    helpFire n = fire eventsource $ ToggleCardChoice n
+    helpFire n = do
+      currentselect <- readIORef $ ibSelected imgb
+      writeIORef (ibSelected imgb) $ not currentselect
+      fire eventsource $ ToggleCardChoice n
 
-xorSet :: Eq a => Maybe a -> [a] -> [a]
-xorSet Nothing xs = xs
-xorSet (Just x) xs = if x `elem` xs 
-                      then remove x xs 
-                      else x : xs
 
-toggleCardChoice :: R.Event AppEvent -> R.Event ([Int] -> [Int])
-toggleCardChoice = fmap makexor . filterE isToggleCardChoiceEvent
-  where
-    makexor (ToggleCardChoice n) = xorSet (Just n)
-    makexor _ = id
-  
 
 runGraphicsClient :: String -> IO ()
 runGraphicsClient username = do

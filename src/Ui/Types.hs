@@ -51,6 +51,7 @@ data ImageButton = ImageButton
   , ibPos  :: V2 CInt
   , ibSize :: V2 CInt
   , ibCard :: IORef Int
+  , ibSelected :: IORef Bool
   }
 
 data StaticText = StaticText

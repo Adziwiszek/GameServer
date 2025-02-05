@@ -13,7 +13,7 @@ import Foreign.C.Types (CInt)
 
 import Ui.Types
 import Uno.Common.Types
-import Types
+import Utils
 
 
 white, black :: V4 Int
@@ -66,6 +66,12 @@ cardToTile :: Card -> SDL.Rectangle CInt
 cardToTile card = case lookup card colorTextureTileMap of
   Just pair -> getTileRect pair
   Nothing -> undefined
+
+toggleCardChoice :: R.Event AppEvent -> R.Event ([Int] -> [Int])
+toggleCardChoice = fmap makexor . filterE isToggleCardChoiceEvent
+  where
+    makexor (ToggleCardChoice n) = xorSet (Just n)
+    makexor _ = id
 
 {-----------------------------------------------------------------------------
     SDL Keyboard logic
@@ -133,7 +139,7 @@ instance WidgetInteraction Button where
   isWidgetClicked _ _ = False
 
 instance WidgetInteraction ImageButton where
-  isWidgetHovered (ImageButton _ _ (V2 x y) (V2 w h) _) mpos = 
+  isWidgetHovered (ImageButton _ _ (V2 x y) (V2 w h) _ _) mpos = 
     case map fromIntegral [x, y, w, h] of
       [x', y', w', h'] -> isPointInRect mpos (x', y', w', h')
       _ -> False
@@ -174,7 +180,8 @@ createImageButton
 createImageButton bId srcRect pos bsize cardid = do
   rectRef <- newIORef srcRect 
   cardidRef <- newIORef cardid
-  return $ ImageButton bId rectRef pos bsize cardidRef
+  selectedRef <- newIORef False 
+  return $ ImageButton bId rectRef pos bsize cardidRef selectedRef
 
 createTextTexture :: MonadIO m => String -> Color -> Font -> SDL.Renderer -> m Texture
 createTextTexture text color font renderer = do
@@ -221,8 +228,6 @@ sinkImageButton :: ImageButton -> Behavior Card -> MomentIO ()
 sinkImageButton imgb = sinkBehavior (updateImageButtonTile imgb)
 
 
-
-
 getTextBackgroundSize :: Text -> IO (V2 Int)
 getTextBackgroundSize text = do
   let (Ui.Types.Text str font _ (V4 w e n s)) = text
@@ -249,6 +254,8 @@ updateStaticText staticText newString = do
 updateImageButtonTile :: ImageButton -> Card -> IO ()
 updateImageButtonTile imgb card = do
   writeIORef (ibSrcRect imgb) $ cardToTile card
+
+
 
 updateImageButtonCard :: ImageButton -> Int -> IO ()
 updateImageButtonCard imgb n = do

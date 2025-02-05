@@ -1,9 +1,11 @@
 module Ui.Graphics (module Ui.Graphics) where 
 
+import Control.Monad (when)
 import Data.IORef
 import Data.Text (pack)
 import Foreign.C.Types (CInt)
 import SDL
+import SDL.Primitive 
 import SDL.Font
 -- import qualified SDL.Primitive
 
@@ -68,10 +70,26 @@ renderImageButtons renderer texture = mapM_ (renderImageButton renderer texture)
 renderImageButton :: SDL.Renderer -> SDL.Texture -> ImageButton -> IO ()
 renderImageButton renderer texture imBut = do
   srcRect <- readIORef $ ibSrcRect imBut
+  selected <- readIORef $ ibSelected imBut
   let destRect = Just $ Rectangle
           (P (ibPos imBut))
           (ibSize imBut)
+
+  when selected drawShadow
+
   copy renderer texture (Just srcRect) destRect
+
+  where
+    drawShadow = do 
+      let shadowThickness = 20
+          (V2 x y) = ibPos imBut
+          (V2 w h) = ibSize imBut
+          topleft = V2 (x - shadowThickness) (y - shadowThickness)
+          bottomright = V2 (x + w + shadowThickness) (y + h + shadowThickness)
+
+      fillRoundRectangle renderer topleft bottomright 20 $ intTo8WordColor black
+      
+
 
 -- Utils =====================================================================
 

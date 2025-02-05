@@ -11,6 +11,12 @@ remove e xs = rm xs []
     rm [] _ = xs
     rm (x:xs') acc = if e == x then reverse acc ++ xs' else rm xs' (x:acc) 
 
+xorSet :: Eq a => Maybe a -> [a] -> [a]
+xorSet Nothing xs = xs
+xorSet (Just x) xs = if x `elem` xs 
+                      then remove x xs 
+                      else x : xs
+
 member :: Eq a => a -> [a] -> Bool
 member _ [] = False
 member a (x:xs) = a == x || member a xs

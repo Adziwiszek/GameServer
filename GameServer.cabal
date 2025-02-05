@@ -44,6 +44,7 @@ executable GameServer
                        MonadRandom,
                        sdl2,
                        sdl2-ttf,
+                       sdl2-gfx,
                        sdl2-image,
                        text,
                        reactive-banana,
