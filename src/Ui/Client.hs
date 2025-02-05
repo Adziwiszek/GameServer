@@ -41,25 +41,41 @@ setupReactiveCard
   :: Int
   -> ImageButton
   -> R.Event AppEvent
+  -> EventSource AppEvent
   -> Behavior Int
   -> Behavior SBoard
-  -> EventSource AppEvent
+  -> Behavior [Int]
   -> MomentIO ()
-setupReactiveCard index imgb appevent bindex bsboard eventsource = do
+setupReactiveCard index imgb appevent eventsource bindex bsboard  bselectedCards= do
   let cardevent = filterE (`isButtonEventWithID` ibID imgb) appevent
+      escrollright = filterE (`isButtonEventWithID` "right")  appevent
+      escrollleft = filterE (`isButtonEventWithID` "left")  appevent
+
   cardbehavior <- dupa bindex bsboard index
   sinkImageButton imgb $ fmap snd cardbehavior
 
   let bcurrnetindex = fmap fst cardbehavior
 
   reactimate $ fmap helpFire $ bcurrnetindex <@ cardevent
+  reactimate $ fmap clickUpdateSelectShadow cardevent
+  reactimate $ fmap (scrollShadow 1) $ (,) <$> bcurrnetindex <*> bselectedCards <@ escrollright
+  reactimate $ fmap (scrollShadow (-1)) $ (,) <$> bcurrnetindex <*> bselectedCards <@ escrollleft
   reactimate $ fmap print $ bcurrnetindex <@ cardevent
 
   where
     helpFire n = do
+      fire eventsource $ ToggleCardChoice n
+
+    clickUpdateSelectShadow _ = do
       currentselect <- readIORef $ ibSelected imgb
       writeIORef (ibSelected imgb) $ not currentselect
-      fire eventsource $ ToggleCardChoice n
+
+    scrollShadow delta (currentindex, activecards) = do
+      cardid <- readIORef $ ibCard imgb
+      putStrLn $ "my id = " ++ show cardid
+          ++ "\ncard that im showing = " ++ show (currentindex + delta) ++ "\n"
+      writeIORef (ibSelected imgb) $ (currentindex + delta) `elem` activecards 
+
 
 
 
@@ -125,7 +141,7 @@ runGraphicsClient username = do
 
         bboard <- hold defaultSBoard $ fmap (\(GameStateEvent gs) -> gs) (filterE isGameStateEvent appEvent)
 
-        mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent cardIndexBehavior bboard appEventSource)
+        mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent appEventSource cardIndexBehavior bboard bselectedCards)
             $ zip [0..] handcards
 
         sinkStaticText offsettxt $ fmap show cardIndexBehavior
