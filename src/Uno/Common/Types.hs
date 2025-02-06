@@ -46,11 +46,13 @@ instance Binary Direction
  
 data SPlayer = SPlayer
   { splayerName :: String
+  , sid         :: Int
   , snumOfCards :: Int
   } deriving (Generic)
 instance Binary SPlayer
 instance Show SPlayer where
-  show (SPlayer name cards) = "Player: " ++ show name ++ ", cards left: " ++ show cards 
+  show (SPlayer name pid cards) = "Player: " ++ show name ++ ", cards left: " ++ show cards 
+      ++ ", id = " ++ show pid
 
 newtype SPlayers = SPlayers [SPlayer] deriving (Show, Generic)
 instance Binary SPlayers

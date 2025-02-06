@@ -156,6 +156,7 @@ processCards (c:cs) board
 game :: (MonadIO m, UnoGame m) => Players -> m (Score, Board)
 game players = do
   startingBoard <- initBoard players
+  sendStartingInfo startingBoard
   play startingBoard
   where         
     play :: (MonadIO m, UnoGame m) => Board -> m (Score, Board)
@@ -197,8 +198,9 @@ boardToSBoard b pid =
   SBoard pid name otherPlayers_ discardedCard_ sdirection_ myHand_ (playerName $ getCurrentPlayer b) toDraw
        
   where 
-    toSPlayer (Player _ name hand _ _) = SPlayer 
+    toSPlayer (Player pid' name hand _ _) = SPlayer 
       { splayerName = name
+      , sid = pid'
       , snumOfCards = length hand
       }
 
@@ -303,9 +305,22 @@ instance Monad NetworkUno where
 instance MonadIO NetworkUno where
     liftIO action = NetworkUno $ \_ _ -> action
 
+
 instance UnoGame NetworkUno where  
+  sendStartingInfo board = NetworkUno $ \outchan _ -> do
+      let sboards = map (boardToSBoard board . playerID) $ getAllPlayersList board
+      mapM_ (`broadcastStartingInfo` outchan) sboards
+
+    where
+      broadcastStartingInfo :: SBoard -> Chan Message -> IO ()
+      broadcastStartingInfo sboard outchan = do
+        let (SPlayers otherplayers) = otherPlayers sboard
+        _broadcast outchan (StartingGameInfo otherplayers) (ToPlayer $ myID sboard) (-1)
+    
   getPlayerMove _ board = NetworkUno $ \outchan _ -> do
     let (Player pid _ _ _ inchan) = getCurrentPlayer board 
+
+    -- TODO send players info about other players at the start
 
     let sboards = map (boardToSBoard board . playerID) $ getAllPlayersList board
     mapM_ (`broadcastOutGameState` outchan) sboards

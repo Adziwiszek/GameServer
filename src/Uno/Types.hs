@@ -15,6 +15,7 @@ newtype Score = Score Player deriving (Generic)
 
 class Monad m => UnoGame m  where
   getPlayerMove :: Int -> Board -> m [Card]
+  sendStartingInfo :: Board -> m ()
 
 data Player = Player
   { playerID :: Int
@@ -30,17 +31,18 @@ instance Show Player where
 newtype Players = Players ([Player], [Player]) deriving Generic
 -- instance Binary Players
 
-data Board = Board {
-  boardPlayers     :: Players,
-  discardPile      :: [Card],
-  drawPile         :: [Card],
-  direction        :: Direction,
-  skipPlayers      :: [Int],
-  addToPlayer      :: Int,
-  skipTurns        :: Int,
-  canDraw          :: Bool,
-  canTransferSkip  :: Bool,
-  chosenColor      :: CardColor
+data Board = Board 
+  { boardPlayers     :: Players
+  , discardPile      :: [Card]
+  , drawPile         :: [Card]
+  , direction        :: Direction
+  , skipPlayers      :: [Int]
+  , addToPlayer      :: Int
+  , skipTurns        :: Int
+  , canDraw          :: Bool
+  , canTransferSkip  :: Bool
+  , chosenColor      :: CardColor
+  , startedGame      :: Bool
 } deriving Generic
 -- instance Binary Board
 

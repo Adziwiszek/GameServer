@@ -5,6 +5,8 @@ import Control.Monad.Cont
 import Control.Monad.Random
 import System.IO
 
+import Types
+
 remove :: Eq a => a -> [a] -> [a]
 remove e xs = rm xs []
   where 
@@ -36,3 +38,10 @@ shuffle xs = do
   return $ nth : rest 
   where
     extractNth xs' n = (xs' !! n, take n xs' ++ drop (n + 1) xs')
+
+-- Messages ===================================================================
+
+printStrMessage :: Message -> IO ()
+printStrMessage msg = case content msg of
+  Text s -> putStrLn s
+  _      -> return ()

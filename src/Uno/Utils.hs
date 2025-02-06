@@ -78,6 +78,7 @@ initBoard (Players (left, right)) = do
                   canDraw         = True,
                   canTransferSkip = True,
                   chosenColor     = getCardColor $ head rest
+                 , startedGame    = False
                   } 
 
   where

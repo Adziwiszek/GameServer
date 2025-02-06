@@ -17,6 +17,7 @@ data MessageContent
   = Text String
   | GameState SBoard
   | GameMove [Card]
+  | StartingGameInfo [SPlayer]
   deriving (Generic, Show)
 
 data MessageTarget 

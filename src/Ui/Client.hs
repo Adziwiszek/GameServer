@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Ui.Client (runGraphicsClient) where
 import Data.Maybe (listToMaybe)
@@ -131,6 +132,7 @@ runGraphicsClient username = do
             estartGame = filterE (`isButtonEventWithID` "startGame") appEvent
             esend = filterE (`isButtonEventWithID` "send") appEvent
             egamestate = filterE isGameStateEvent appEvent
+            einitgameinfo = filterE (\case SessionPlayers _ -> True; _ -> False) appEvent
 
             
         bselectedCards <- accumB [] $ toggleCardChoice appEvent
@@ -138,7 +140,7 @@ runGraphicsClient username = do
         cardIndexBehavior <- setupCounter 0 eup edown
 
         bboard <- hold defaultSBoard $ fmap (\(GameStateEvent gs) -> gs) egamestate
-
+        botherplayers <- hold [] $ fmap (\(SessionPlayers sp) -> sp) einitgameinfo
         btopcard <- hold defaultCard $ fmap topCardFromEvent egamestate 
 
         mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent appEventSource cardIndexBehavior bboard bselectedCards)
@@ -147,6 +149,7 @@ runGraphicsClient username = do
         sinkImageButton topCard btopcard
 
         reactimate $ fmap (`startGame` outchan) estartGame
+        reactimate $ fmap print (botherplayers <@ esend)
         reactimate $ fmap print (bselectedCards <@ esend)
 
 
@@ -161,7 +164,7 @@ runGraphicsClient username = do
 
   startGame :: AppEvent -> Chan Message -> IO ()
   startGame appevent outchan = case appevent of 
-    ButtonClickEvent bid -> do
+    ButtonClickEvent _ -> do
       writeChan outchan $ Message Server (Types.Text ":start ") 0
     _ -> return ()
 
@@ -195,9 +198,10 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
           putStrLn str
         Types.GameState gs -> do
           putStrLn "received game state"
-          print gs
           fire eventSource $ GameStateEvent gs
           return ()
+        Types.StartingGameInfo ginfo -> do
+          fire eventSource $ SessionPlayers ginfo
         _ -> return ()
       loop
 

@@ -26,6 +26,7 @@ data AppEvent
   | ServerMessage Message
   | GameStateEvent SBoard
   | ToggleCardChoice Int
+  | SessionPlayers [SPlayer]
 
 {- Graphics =================================================================-}
 type Screen = SDL.Surface

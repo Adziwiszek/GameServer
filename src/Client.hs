@@ -190,7 +190,3 @@ handleConnection2 (_, hdl) inchan outchan playerId = do
           putMVar playerId $ senderID msg
       _ -> return ()
 
-printStrMessage :: Message -> IO ()
-printStrMessage msg = case content msg of
-  Text s -> putStrLn s
-  _      -> return ()

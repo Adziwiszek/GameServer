@@ -116,6 +116,7 @@ runConn (sock, _) chan msgNum gs players _ = do
           writeChan inChan (Message Server (GameMove m) playerId)
         loop
       GameState _ -> loop
+      StartingGameInfo _ -> loop
 
 
   killThread senderThread                      
