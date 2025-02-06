@@ -80,15 +80,17 @@ setupReactivePlayerInfoBar
   :: Int 
   -> StaticText
   -> EventSource AppEvent
-  {-
-  -> Behavior SBoard
-  -> Behavior SPlayer
-  -}
   -> MomentIO ()
 setupReactivePlayerInfoBar barIndex playerBar eventsource = do
   appEvent <- fromAddHandler (addHandler eventsource)
   let estartinfo = filterE isInitPlayerBar appEvent 
+      egamestateupdate = filterE (\case GameStateEvent _ -> True; _ -> False) appEvent
 
+  -- updating after a move
+  bupdate <- hold "no player" $ fmap updatePlayerInfo egamestateupdate
+  sinkStaticText playerBar bupdate
+
+  -- start of the game
   binit <- hold "no player" $ fmap getPlayerInfo estartinfo
   sinkStaticText playerBar binit
 
@@ -100,6 +102,11 @@ setupReactivePlayerInfoBar barIndex playerBar eventsource = do
     isInitPlayerBar (InitPlayerBar (id', _)) = barIndex == id'
     isInitPlayerBar  _ = False
 
+    updatePlayerInfo (GameStateEvent gs) = 
+      let (SPlayers players) = otherPlayers gs
+      in let thisplayer = players !! barIndex
+      in splayerName thisplayer ++ ": " ++ show (snumOfCards thisplayer)
+    updatePlayerInfo _ = "no player"
 
 
 runGraphicsClient :: String -> IO ()
@@ -240,7 +247,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
           fire eventSource $ GameStateEvent gs
           return ()
         Types.StartingGameInfo ginfo -> do
-          fire eventSource $ SessionPlayers ginfo
+          mapM_ (\(i, p) -> fire eventSource $ InitPlayerBar (i, p)) $ zip [0..] ginfo
         _ -> return ()
       loop
 
