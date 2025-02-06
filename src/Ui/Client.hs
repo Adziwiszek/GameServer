@@ -7,6 +7,7 @@ import Data.Maybe (listToMaybe)
 import Data.IORef
 import Control.Concurrent
 import Control.Monad.State
+import Foreign.C.Types (CInt)
 import SDL
 import SDL.Font
 import SDL.Image (loadTexture)
@@ -65,15 +66,39 @@ setupReactiveCard index imgb appevent eventsource bindex bsboard  bselectedCards
 
   where
     helpFire n = do
-      fire eventsource $ ToggleCardChoice n
+      when (n >= 0) $ fire eventsource $ ToggleCardChoice n
 
     clickUpdateSelectShadow _ = do
       currentselect <- readIORef $ ibSelected imgb
       writeIORef (ibSelected imgb) $ not currentselect
 
     scrollShadow delta (currentindex, activecards) = do
-      writeIORef (ibSelected imgb) $ (currentindex + delta) `elem` activecards 
+      writeIORef (ibSelected imgb) $ (currentindex + delta) `elem` activecards && (currentindex + delta) >= 0
 
+
+setupReactivePlayerInfoBar
+  :: Int 
+  -> StaticText
+  -> EventSource AppEvent
+  {-
+  -> Behavior SBoard
+  -> Behavior SPlayer
+  -}
+  -> MomentIO ()
+setupReactivePlayerInfoBar barIndex playerBar eventsource = do
+  appEvent <- fromAddHandler (addHandler eventsource)
+  let estartinfo = filterE isInitPlayerBar appEvent 
+
+  binit <- hold "no player" $ fmap getPlayerInfo estartinfo
+  sinkStaticText playerBar binit
+
+  where
+    getPlayerInfo (InitPlayerBar (_, SPlayer pname _ ncards)) =
+      pname ++ ": " ++ show ncards     
+    getPlayerInfo _ = undefined
+
+    isInitPlayerBar (InitPlayerBar (id', _)) = barIndex == id'
+    isInitPlayerBar  _ = False
 
 
 
@@ -86,6 +111,7 @@ runGraphicsClient username = do
   window <- createWindow "Uno online!" defaultWindow
   renderer <- createRenderer window (-1) defaultRenderer
 
+  appEventSource <- createAppEventSource
   inchan  :: Chan Message <- newChan 
   outchan :: Chan Message <- newChan
   playerid <- newEmptyMVar
@@ -116,15 +142,24 @@ runGraphicsClient username = do
   bsendmove <- createButton "send" "send" (V2 700 500) white
   name1 <- createStaticText "myname" username (V2 700 420)
 
+  playerBar1 <- createStaticText "player0" "no player" (V2 100 100)
+  playerBar2 <- createStaticText "player1" "no player" (V2 100 200)
+
+
   let widgets :: [Widget]
-      widgets = [WButton bup, WButton bdown, WButton bsendmove,
+      widgets = 
+        [WButton bup, WButton bdown, WButton bsendmove,
         WStaticText name1, WImgButton topCard,
-        WButton bstartGame] ++ map WImgButton handcards
-  appEventSource <- createAppEventSource
+        WButton bstartGame
+        , WStaticText playerBar1
+        , WStaticText playerBar2
+        ] ++ map WImgButton handcards
+
 
 
   let networkDescription :: MomentIO ()
       networkDescription = do
+        -- Filtering events ===================================================
         appEvent <- fromAddHandler (addHandler appEventSource)
         let eButtonClick = filterE isButtonClickEvent appEvent 
             eup = filterE (`isButtonEventWithID` "right") eButtonClick
@@ -134,7 +169,7 @@ runGraphicsClient username = do
             egamestate = filterE isGameStateEvent appEvent
             einitgameinfo = filterE (\case SessionPlayers _ -> True; _ -> False) appEvent
 
-            
+        -- Behaviors ==========================================================
         bselectedCards <- accumB [] $ toggleCardChoice appEvent
         
         cardIndexBehavior <- setupCounter 0 eup edown
@@ -143,8 +178,12 @@ runGraphicsClient username = do
         botherplayers <- hold [] $ fmap (\(SessionPlayers sp) -> sp) einitgameinfo
         btopcard <- hold defaultCard $ fmap topCardFromEvent egamestate 
 
+        -- Making Events and Behaviors actually do stuff ======================
         mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent appEventSource cardIndexBehavior bboard bselectedCards)
             $ zip [0..] handcards
+        
+        setupReactivePlayerInfoBar 0 playerBar1 appEventSource 
+        setupReactivePlayerInfoBar 1 playerBar2 appEventSource
 
         sinkImageButton topCard btopcard
 

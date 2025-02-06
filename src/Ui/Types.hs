@@ -27,6 +27,7 @@ data AppEvent
   | GameStateEvent SBoard
   | ToggleCardChoice Int
   | SessionPlayers [SPlayer]
+  | InitPlayerBar (Int, SPlayer)
 
 {- Graphics =================================================================-}
 type Screen = SDL.Surface

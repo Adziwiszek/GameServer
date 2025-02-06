@@ -44,7 +44,7 @@ renderStaticText renderer st = do
   SDL.rendererDrawColor renderer $= stBgColor st
   text <- readIORef (stTextRef st)
   let (Text msg font color padding) = text
-  let (V2 x y) = stPos st
+      (V2 x y) = stPos st
       (V4 w _ n _) = padding
 
   (V2 bgW bgH) <- getTextBackgroundSize text
