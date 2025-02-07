@@ -16,9 +16,10 @@ import Uno.Common.Types
 import Utils
 
 
-white, black :: V4 Int
+white, black, grey :: V4 Int
 white = V4 255 255 255 255
 black = V4 0 0 0 255
+grey  = V4 125 125 125 255
 
 fRed :: SDL.Font.Color
 fRed = V4 255 0 0 255
@@ -129,6 +130,7 @@ getKeyCode event =
 class WidgetInteraction a where
   isWidgetHovered :: a -> V2 Int -> Bool 
   isWidgetClicked :: a -> SDL.EventPayload -> Bool
+  updateColor     :: a -> GColor -> IO ()
 
 instance WidgetInteraction Button where
   isWidgetHovered (Button _ _ (V2 x y) (V2 w h) _) mpos = isPointInRect mpos (x, y, w, h)
@@ -137,6 +139,9 @@ instance WidgetInteraction Button where
     SDL.mouseButtonEventMotion mouseEv == Pressed &&
     isWidgetHovered button (mousePos mouseEv) 
   isWidgetClicked _ _ = False
+
+  updateColor (Button _ _ _ _ colorRef) newColor = do
+    writeIORef colorRef newColor 
 
 instance WidgetInteraction ImageButton where
   isWidgetHovered (ImageButton _ _ (V2 x y) (V2 w h) _ _) mpos = 
@@ -148,6 +153,10 @@ instance WidgetInteraction ImageButton where
     SDL.mouseButtonEventMotion mouseEv == Pressed &&
     isWidgetHovered imgButton (mousePos mouseEv) 
   isWidgetClicked _ _ = False
+
+instance WidgetInteraction StaticText where
+  updateColor (StaticText _ _ _ colorRef) newColor = do
+    writeIORef colorRef newColor 
 
 isPointInRect :: V2 Int -> (Int, Int, Int, Int) -> Bool
 isPointInRect (V2 px py) (rx, ry, rw, rh) =
@@ -207,7 +216,8 @@ createButton text bID pos color = do
   let (V4 w e n s) = _textPadding txt
   let rW = fromIntegral tW + w + e
   let rH = fromIntegral tH + n + s
-  return $ Button bID txt pos (V2 rW rH) color
+  colorRef <- newIORef color
+  return $ Button bID txt pos (V2 rW rH) colorRef
 
 
 sinkBehavior :: (a -> IO ()) -> Behavior a -> MomentIO ()
@@ -239,12 +249,13 @@ getTextBackgroundSize text = do
 
 
 createStaticText :: String -> String -> V2 Int -> IO StaticText 
-createStaticText stId text pos = do
+createStaticText text stId pos = do
   font <- SDL.Font.load "Roboto-Black.ttf" 20
   let txt = Ui.Types.Text text font fBlack $ V4 10 10 10 10
   textRef <- newIORef txt
+  colorRef <- newIORef white
 
-  return $ StaticText stId textRef pos $ intTo8WordColor white
+  return $ StaticText stId textRef pos colorRef
   
 updateStaticText :: StaticText -> String -> IO ()
 updateStaticText staticText newString = do
@@ -254,8 +265,6 @@ updateStaticText staticText newString = do
 updateImageButtonTile :: ImageButton -> Card -> IO ()
 updateImageButtonTile imgb card = do
   writeIORef (ibSrcRect imgb) $ cardToTile card
-
-
 
 updateImageButtonCard :: ImageButton -> Int -> IO ()
 updateImageButtonCard imgb n = do

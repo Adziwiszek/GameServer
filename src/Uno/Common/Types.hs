@@ -67,13 +67,13 @@ data SBoard = SBoard
   , discardedCard :: Card
   , sdirection    :: Direction
   , myHand        :: [Card]
-  , currentPlayerName :: String
+  , currentPlayerInfo :: (Int, String)
   , cardsToDraw :: Int
   } deriving (Generic)
 instance Binary SBoard
 
 instance Show SBoard where
-  show (SBoard _ name (SPlayers players) topcard dir hand curName ndraw) = flip joinStr " " $ 
+  show (SBoard _ name (SPlayers players) topcard dir hand (_, curName) ndraw) = flip joinStr " " $ 
     [("Current player = " ++ curName ++ "\n")] ++
     [(if ndraw > 0 then "they have to draw " ++ show ndraw ++ " cards\n" else "")] ++
     map showNewline players ++

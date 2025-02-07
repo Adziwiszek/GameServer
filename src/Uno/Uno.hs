@@ -193,7 +193,8 @@ boardToSBoard b pid =
   let sdirection_ = direction b in
   let name = playerName thisPlayer in
   let toDraw = addToPlayer b in
-  SBoard pid name otherPlayers_ discardedCard_ sdirection_ myHand_ (playerName $ getCurrentPlayer b) toDraw
+  let currentPlayer = getCurrentPlayer b in
+  SBoard pid name otherPlayers_ discardedCard_ sdirection_ myHand_ (playerID currentPlayer, playerName currentPlayer) toDraw
        
   where 
     toSPlayer (Player pid' name hand _ _) = SPlayer 

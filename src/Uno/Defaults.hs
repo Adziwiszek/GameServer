@@ -12,7 +12,7 @@ defaultSBoard = SBoard
   (Card (Blank, Colorless))
   DLeft
   []
-  ""
+  (0, "")
   0
 
 startingDeckSize :: Int 

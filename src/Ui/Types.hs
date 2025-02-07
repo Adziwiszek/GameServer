@@ -47,7 +47,7 @@ data Button = Button
   , buttonText :: Text
   , buttonPos  :: V2 Int
   , buttonSize :: V2 Int
-  , buttonColor :: GColor
+  , buttonColor :: IORef GColor
   }
   
 data ImageButton = ImageButton
@@ -63,7 +63,7 @@ data StaticText = StaticText
   { stID      :: String
   , stTextRef :: IORef Text 
   , stPos     :: V2 Int
-  , stBgColor :: Color
+  , stBgColor :: IORef GColor
   }
 
 data Widget

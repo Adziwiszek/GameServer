@@ -49,7 +49,7 @@ setupReactiveCard
   -> Behavior SBoard
   -> Behavior [Int]
   -> MomentIO ()
-setupReactiveCard index imgb appevent eventsource bindex bsboard  bselectedCards= do
+setupReactiveCard index imgb appevent eventsource bindex bsboard bselectedCards= do
   let cardevent = filterE (`isButtonEventWithID` ibID imgb) appevent
       escrollright = filterE (`isButtonEventWithID` "right")  appevent
       escrollleft = filterE (`isButtonEventWithID` "left")  appevent
@@ -71,15 +71,12 @@ setupReactiveCard index imgb appevent eventsource bindex bsboard  bselectedCards
       when (n >= 0) $ fire eventsource $ ToggleCardChoice n
 
     scrollShadow delta (currentindex, activecards) = do
-      when (delta == 0) $ putStrLn "clicked!!!"
       writeIORef (ibSelected imgb) $ (currentindex + delta) `elem` activecards && (currentindex + delta) >= 0
 
     toggleShadow (currentIndex, ToggleCardChoice n) = do
       when (currentIndex == n) $ do
         isSelected <- readIORef (ibSelected imgb) 
-        putStrLn $ "card " ++ show n ++ " was selected?: " ++ show isSelected
         writeIORef (ibSelected imgb) $ not isSelected
-        putStrLn $ "card " ++ show n ++ " is now selected?: " ++ show (not isSelected)
     toggleShadow _ = return ()
 
 
@@ -87,11 +84,13 @@ setupReactivePlayerInfoBar
   :: Int 
   -> StaticText
   -> EventSource AppEvent
+  -> Behavior SBoard
   -> MomentIO ()
-setupReactivePlayerInfoBar barIndex playerBar eventsource = do
+setupReactivePlayerInfoBar barIndex playerBar eventsource bsboard = do
   appEvent <- fromAddHandler (addHandler eventsource)
   let estartinfo = filterE isInitPlayerBar appEvent 
       egamestateupdate = filterE (\case GameStateEvent _ -> True; _ -> False) appEvent
+
 
   -- updating after a move
   bupdate <- hold "no player" $ fmap updatePlayerInfo egamestateupdate
@@ -100,6 +99,8 @@ setupReactivePlayerInfoBar barIndex playerBar eventsource = do
   -- start of the game
   binit <- hold "no player" $ fmap getPlayerInfo estartinfo
   sinkStaticText playerBar binit
+
+  sinkBehavior (updateBGColor playerBar) bsboard
 
   where
     getPlayerInfo (InitPlayerBar (_, SPlayer pname _ ncards)) =
@@ -114,6 +115,16 @@ setupReactivePlayerInfoBar barIndex playerBar eventsource = do
       in let thisplayer = players !! barIndex
       in splayerName thisplayer ++ ": " ++ show (snumOfCards thisplayer)
     updatePlayerInfo _ = "no player"
+
+    updateBGColor st sboard = do
+      let colorRef = stBgColor st
+      let (cid, cname) = currentPlayerInfo sboard
+      writeIORef colorRef $ 
+        if cid == barIndex 
+          then grey
+          else white
+        
+      
 
 
 runGraphicsClient :: String -> IO ()
@@ -153,11 +164,14 @@ runGraphicsClient username = do
   bstartGame <- createButton "start" "startGame" (V2 0 0) white
   bup   <- createButton "<-" "left" (V2 50 450) white
   bdown <- createButton "->" "right" (V2 50 500) white
-  bsendmove <- createButton "send" "send" (V2 700 500) white
-  name1 <- createStaticText "myname" username (V2 700 420)
 
-  playerBar1 <- createStaticText "player0" "no player" (V2 100 100)
-  playerBar2 <- createStaticText "player1" "no player" (V2 100 200)
+  name1     <- createStaticText "myname" username (V2 700 360)
+  bsendmove <- createButton "Send your move" "send" (V2 700 420) white
+  bdrawCard <- createButton "Draw card(s)" "draw" (V2 700 480) white
+  bendturn  <- createButton "End turn" "endturn" (V2 700 540) white
+
+  playerBar1 <- createStaticText "no player" "player0"  (V2 100 100)
+  playerBar2 <- createStaticText "no player" "player1"  (V2 100 200)
 
 
   let widgets :: [Widget]
@@ -167,6 +181,8 @@ runGraphicsClient username = do
         WButton bstartGame
         , WStaticText playerBar1
         , WStaticText playerBar2
+        , WButton bdrawCard
+        , WButton bendturn
         ] ++ map WImgButton handcards
 
 
@@ -182,6 +198,8 @@ runGraphicsClient username = do
             esend = filterE (`isButtonEventWithID` "send") appEvent
             egamestate = filterE isGameStateEvent appEvent
             einitgameinfo = filterE (\case SessionPlayers _ -> True; _ -> False) appEvent
+            edrawcard = filterE (`isButtonEventWithID` "draw") appEvent
+            eendturn = filterE (`isButtonEventWithID` "endturn") appEvent
 
         -- Behaviors ==========================================================
         bselectedCards <- accumB [] $ toggleCardChoice appEvent
@@ -196,15 +214,16 @@ runGraphicsClient username = do
         mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent appEventSource cardIndexBehavior bboard bselectedCards)
             $ zip [0..] handcards
         
-        setupReactivePlayerInfoBar 0 playerBar1 appEventSource 
-        setupReactivePlayerInfoBar 1 playerBar2 appEventSource
+        mapM_ (\(index, pbar) ->
+            setupReactivePlayerInfoBar index pbar appEventSource bboard)
+            $ zip [0..] [playerBar1, playerBar2]
 
         sinkImageButton topCard btopcard
 
         reactimate $ fmap (`startGame` outchan) estartGame
-        -- reactimate $ fmap print (botherplayers <@ esend)
-        -- TODO change this to send move to the server
-        reactimate $ fmap (\x -> sendGameMove x outchan appEventSource) ((,) <$> bboard <*> bselectedCards <@ esend)
+        reactimate $ fmap (\x -> sendDrawCard x outchan appEventSource) $ bselectedCards <@ edrawcard
+        reactimate $ fmap (\x -> sendGameMove x outchan appEventSource) $ (,) <$> bboard <*> bselectedCards <@ esend
+        reactimate $ fmap (\x -> sendEndTurn x outchan) $ eendturn
 
 
   -- network <- setupNetwork appEventSource 
@@ -239,8 +258,13 @@ runGraphicsClient username = do
     -- toggle of selected cards
     mapM_ (fire eventsource . ToggleCardChoice) selectedCards
     
+  sendDrawCard selectedCards outchan eventsource = do
+    putStrLn "drawing card!"
+    writeChan outchan $ Message Server (GameMove [Card (SelfDraw, Null)]) 0
+    mapM_ (fire eventsource . ToggleCardChoice) selectedCards
 
-
+  sendEndTurn _ outchan = do
+    writeChan outchan $ Message Server (GameMove [Card (EndTurn, Null)]) 0
 
 
 -- Read commands and fire corresponding events 
