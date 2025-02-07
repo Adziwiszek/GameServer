@@ -217,8 +217,12 @@ createButton text bID pos color = do
   let rW = fromIntegral tW + w + e
   let rH = fromIntegral tH + n + s
   colorRef <- newIORef color
-  return $ Button bID txt pos (V2 rW rH) colorRef
+  return $ Button bID (Just txt) pos (V2 rW rH) colorRef
 
+createNoTextButton :: String -> V2 Int -> V2 Int -> GColor -> IO Button
+createNoTextButton bID pos bsize color = do
+  colorRef <- newIORef color
+  return $ Button bID Nothing pos bsize colorRef
 
 sinkBehavior :: (a -> IO ()) -> Behavior a -> MomentIO ()
 sinkBehavior updateFunc beh = do

@@ -19,22 +19,23 @@ renderButtons renderer buttons = do
 
 -- Render a single button
 renderButton :: Renderer -> Button -> IO ()
-renderButton renderer (Button _ (Text msg font fcolor padding) (V2 x y) (V2 rW rH) colorRef) = do
-  --SDL.rendererDrawColor renderer $= intTo8WordColor color
-  --let rect = SDL.Rectangle (SDL.P )  
+renderButton renderer (Button _ text (V2 x y) (V2 rW rH) colorRef) = do
   bgcolor <- readIORef colorRef
   fillRoundRectangle renderer 
       (V2 (fromIntegral x) (fromIntegral y)) 
       (V2 (fromIntegral $ x + rW) (fromIntegral $ y + rH)) 
       8 
       $ intTo8WordColor bgcolor
-  --SDL.fillRect renderer (Just $ toCIntRect rect)
-  let (V4 w _ n _) = padding
-  textSurface <- SDL.Font.solid font fcolor $ pack msg
-  textTexture <- SDL.createTextureFromSurface renderer textSurface
-  SDL.freeSurface textSurface
-  renderTexture renderer textTexture $ V2 (x + w) (y + n)
-  SDL.destroyTexture textTexture
+
+  case text of
+    Just (Text msg font fcolor padding) -> do
+      let (V4 w _ n _) = padding
+      textSurface <- SDL.Font.solid font fcolor $ pack msg
+      textTexture <- SDL.createTextureFromSurface renderer textSurface
+      SDL.freeSurface textSurface
+      renderTexture renderer textTexture $ V2 (x + w) (y + n)
+      SDL.destroyTexture textTexture
+    Nothing -> return ()
 
 renderTexture :: SDL.Renderer -> SDL.Texture -> V2 Int -> IO ()
 renderTexture renderer texture p = do

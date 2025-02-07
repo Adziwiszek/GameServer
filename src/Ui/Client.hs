@@ -146,10 +146,10 @@ runGraphicsClient username = do
 
   let srcRect = cardToTile defaultCard
 
-  handcard1 <- createImageButton "handcard1" srcRect (V2 100 420) (V2 100 150) 0
-  handcard2 <- createImageButton "handcard2" srcRect (V2 250 420) (V2 100 150) 1
-  handcard3 <- createImageButton "handcard3" srcRect (V2 400 420) (V2 100 150) 2
-  handcard4 <- createImageButton "handcard4" srcRect (V2 550 420) (V2 100 150) 3
+  handcard1 <- createImageButton "handcard1" srcRect (V2 80 420) (V2 100 150) 0
+  handcard2 <- createImageButton "handcard2" srcRect (V2 230 420) (V2 100 150) 1
+  handcard3 <- createImageButton "handcard3" srcRect (V2 380 420) (V2 100 150) 2
+  handcard4 <- createImageButton "handcard4" srcRect (V2 530 420) (V2 100 150) 3
 
   let handcards = 
         [ handcard1
@@ -162,16 +162,21 @@ runGraphicsClient username = do
   topCard <- createImageButton "topCard" srcRect (V2 340 200) (V2 100 150) (-1)
 
   bstartGame <- createButton "start" "startGame" (V2 0 0) white
-  bup   <- createButton "<-" "left" (V2 50 450) white
-  bdown <- createButton "->" "right" (V2 50 500) white
+  bup   <- createButton "<-" "left" (V2 20 450) white
+  bdown <- createButton "->" "right" (V2 20 500) white
 
-  name1     <- createStaticText "myname" username (V2 700 360)
-  bsendmove <- createButton "Send your move" "send" (V2 700 420) white
-  bdrawCard <- createButton "Draw card(s)" "draw" (V2 700 480) white
-  bendturn  <- createButton "End turn" "endturn" (V2 700 540) white
+  name1     <- createStaticText username "myname"  (V2 650 360)
+  bsendmove <- createButton "Send move" "send" (V2 650 420) white
+  bdrawCard <- createButton "Draw card(s)" "draw" (V2 650 480) white
+  bendturn  <- createButton "End turn" "endturn" (V2 650 540) white
 
-  playerBar1 <- createStaticText "no player" "player0"  (V2 100 100)
-  playerBar2 <- createStaticText "no player" "player1"  (V2 100 200)
+  playerBar1 <- createStaticText "no player" "player0"  (V2 100 90)
+  playerBar2 <- createStaticText "no player" "player1"  (V2 100 170)
+  playerBar3 <- createStaticText "no player" "player2"  (V2 100 250)
+  playerBar4 <- createStaticText "no player" "player3"  (V2 100 330)
+
+
+  testbutton <- createNoTextButton "testbut" (V2 300 20) (V2 50 50) white
 
 
   let widgets :: [Widget]
@@ -181,8 +186,11 @@ runGraphicsClient username = do
         WButton bstartGame
         , WStaticText playerBar1
         , WStaticText playerBar2
+        , WStaticText playerBar3
+        , WStaticText playerBar4
         , WButton bdrawCard
         , WButton bendturn
+        , WButton testbutton
         ] ++ map WImgButton handcards
 
 
@@ -200,6 +208,7 @@ runGraphicsClient username = do
             einitgameinfo = filterE (\case SessionPlayers _ -> True; _ -> False) appEvent
             edrawcard = filterE (`isButtonEventWithID` "draw") appEvent
             eendturn = filterE (`isButtonEventWithID` "endturn") appEvent
+            edupa = filterE (`isButtonEventWithID` "testbut") appEvent
 
         -- Behaviors ==========================================================
         bselectedCards <- accumB [] $ toggleCardChoice appEvent
@@ -216,7 +225,7 @@ runGraphicsClient username = do
         
         mapM_ (\(index, pbar) ->
             setupReactivePlayerInfoBar index pbar appEventSource bboard)
-            $ zip [0..] [playerBar1, playerBar2]
+            $ zip [0..] [playerBar1, playerBar2, playerBar3, playerBar4]
 
         sinkImageButton topCard btopcard
 
@@ -224,6 +233,8 @@ runGraphicsClient username = do
         reactimate $ fmap (\x -> sendDrawCard x outchan appEventSource) $ bselectedCards <@ edrawcard
         reactimate $ fmap (\x -> sendGameMove x outchan appEventSource) $ (,) <$> bboard <*> bselectedCards <@ esend
         reactimate $ fmap (\x -> sendEndTurn x outchan) $ eendturn
+
+        reactimate $ fmap (\_ -> putStrLn "DUPPPA") edupa
 
 
   -- network <- setupNetwork appEventSource 

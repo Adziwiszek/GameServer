@@ -44,7 +44,7 @@ data Text = Text
 
 data Button = Button
   { buttonID   :: String
-  , buttonText :: Text
+  , buttonText :: Maybe Text
   , buttonPos  :: V2 Int
   , buttonSize :: V2 Int
   , buttonColor :: IORef GColor
