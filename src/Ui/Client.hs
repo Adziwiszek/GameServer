@@ -25,8 +25,8 @@ import Utils
 import Types
 
 
-dupa :: Behavior Int -> Behavior SBoard ->  Int -> MomentIO (Behavior (Int, Card))
-dupa bint bboard  initialIndex = return $
+chooseCardToShowBehavior :: Behavior Int -> Behavior SBoard ->  Int -> MomentIO (Behavior (Int, Card))
+chooseCardToShowBehavior bint bboard  initialIndex = return $
     liftA2 findCardToShow bint bboard  
 
   where
@@ -38,6 +38,7 @@ dupa bint bboard  initialIndex = return $
       else (index, myHand gs !! index)
 
 
+-- todo fix card not toggling off after a move
 
 setupReactiveCard
   :: Int
@@ -52,28 +53,34 @@ setupReactiveCard index imgb appevent eventsource bindex bsboard  bselectedCards
   let cardevent = filterE (`isButtonEventWithID` ibID imgb) appevent
       escrollright = filterE (`isButtonEventWithID` "right")  appevent
       escrollleft = filterE (`isButtonEventWithID` "left")  appevent
+      etoggledcard = filterE (\case ToggleCardChoice _ -> True; _ -> False) appevent
 
-  cardbehavior <- dupa bindex bsboard index
+  -- behavior for changin which card we currently show in this widget  
+  cardbehavior <- chooseCardToShowBehavior bindex bsboard index
   sinkImageButton imgb $ fmap snd cardbehavior
 
   let bcurrnetindex = fmap fst cardbehavior
 
-  reactimate $ fmap helpFire $ bcurrnetindex <@ cardevent
-  reactimate $ fmap clickUpdateSelectShadow cardevent
+  reactimate $ fmap toggleShadow $ (,) <$> bcurrnetindex <@> etoggledcard
+  reactimate $ fmap fireToggleCardChoice $ bcurrnetindex <@ cardevent
   reactimate $ fmap (scrollShadow 1) $ (,) <$> bcurrnetindex <*> bselectedCards <@ escrollright
   reactimate $ fmap (scrollShadow (-1)) $ (,) <$> bcurrnetindex <*> bselectedCards <@ escrollleft
-  reactimate $ fmap print $ bcurrnetindex <@ cardevent
 
   where
-    helpFire n = do
+    fireToggleCardChoice n = do
       when (n >= 0) $ fire eventsource $ ToggleCardChoice n
 
-    clickUpdateSelectShadow _ = do
-      currentselect <- readIORef $ ibSelected imgb
-      writeIORef (ibSelected imgb) $ not currentselect
-
     scrollShadow delta (currentindex, activecards) = do
+      when (delta == 0) $ putStrLn "clicked!!!"
       writeIORef (ibSelected imgb) $ (currentindex + delta) `elem` activecards && (currentindex + delta) >= 0
+
+    toggleShadow (currentIndex, ToggleCardChoice n) = do
+      when (currentIndex == n) $ do
+        isSelected <- readIORef (ibSelected imgb) 
+        putStrLn $ "card " ++ show n ++ " was selected?: " ++ show isSelected
+        writeIORef (ibSelected imgb) $ not isSelected
+        putStrLn $ "card " ++ show n ++ " is now selected?: " ++ show (not isSelected)
+    toggleShadow _ = return ()
 
 
 setupReactivePlayerInfoBar
@@ -195,8 +202,9 @@ runGraphicsClient username = do
         sinkImageButton topCard btopcard
 
         reactimate $ fmap (`startGame` outchan) estartGame
-        reactimate $ fmap print (botherplayers <@ esend)
-        reactimate $ fmap print (bselectedCards <@ esend)
+        -- reactimate $ fmap print (botherplayers <@ esend)
+        -- TODO change this to send move to the server
+        reactimate $ fmap (\x -> sendGameMove x outchan appEventSource) ((,) <$> bboard <*> bselectedCards <@ esend)
 
 
   -- network <- setupNetwork appEventSource 
@@ -218,6 +226,19 @@ runGraphicsClient username = do
   topCardFromEvent (GameStateEvent gs) = discardedCard gs
   topCardFromEvent _ = defaultCard
 
+  sendGameMove 
+    :: (SBoard, [Int]) 
+    -> Chan Message 
+    -> EventSource AppEvent 
+    -> IO ()
+  sendGameMove (gameState, selectedCards) outchan eventsource = do
+    let cards = choose selectedCards $ myHand gameState
+    putStrLn $ "sending move = " ++ show cards
+    -- send players move to the server
+    writeChan outchan $ Message Server (GameMove cards) 0
+    -- toggle of selected cards
+    mapM_ (fire eventsource . ToggleCardChoice) selectedCards
+    
 
 
 

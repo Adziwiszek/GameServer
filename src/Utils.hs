@@ -7,6 +7,16 @@ import System.IO
 
 import Types
 
+
+choose :: [Int] -> [a] -> [a]
+choose ids xs = reverse $ foldl aux [] $ zip [0..] xs
+  where
+    aux acc (i, x) = 
+      if i `elem` ids
+        then x : acc
+        else acc
+      
+
 remove :: Eq a => a -> [a] -> [a]
 remove e xs = rm xs []
   where 

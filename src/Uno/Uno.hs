@@ -40,12 +40,10 @@ removeCardsFromPlayer :: Board -> [Card] -> Board
 removeCardsFromPlayer board move = 
     let (left, p, right) = unpackPlayers $ boardPlayers board 
     in let cards = playerHand p
-    in let newHand = foldl 
-            (\acc c -> 
-                if cardMember c move 
-                then acc
-                else c : acc) 
-            [] cards
+    in let newHand = foldr 
+              (\c acc -> if c `cardMember` move then acc else c : acc) 
+              [] 
+              cards
     in board {boardPlayers=Players (left, p {playerHand=newHand}:right)}
 
   where 
