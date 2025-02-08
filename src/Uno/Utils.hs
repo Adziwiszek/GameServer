@@ -7,11 +7,20 @@ import System.IO
 import Uno.Common.Types
 import Uno.Types
 import Uno.Defaults
+import Ui.Types
+import Ui.Utils
 import Utils
 
 {-----------------------------------------------------------------------------
     Board
  -----------------------------------------------------------------------------}
+getCurrentColor :: SBoard -> GColor
+getCurrentColor sboard = case getCardColor $ discardedCard sboard of
+  Red -> red
+  Blue -> blue
+  Green -> green
+  Yellow -> yellow
+  _ -> red
 
 class GetBoardInfo a where
   getCurrentPlayer :: a -> Player

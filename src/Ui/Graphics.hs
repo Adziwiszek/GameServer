@@ -19,11 +19,20 @@ renderButtons renderer buttons = do
 
 -- Render a single button
 renderButton :: Renderer -> Button -> IO ()
-renderButton renderer (Button _ text (V2 x y) (V2 rW rH) colorRef) = do
+renderButton renderer btn = do
+  let text = buttonText btn
+      (V2 x y) = buttonPos btn
+      (V2 rW rH) = buttonSize btn
+      colorRef = buttonColor btn
+      selectedRef = buttonSelected btn
+
+  isSelected <- readIORef selectedRef
+  when isSelected drawShadow
+
   bgcolor <- readIORef colorRef
   fillRoundRectangle renderer 
-      (V2 (fromIntegral x) (fromIntegral y)) 
-      (V2 (fromIntegral $ x + rW) (fromIntegral $ y + rH)) 
+      (fromIntegral <$> V2  x  y)
+      (fromIntegral <$> V2  (x + rW) (y + rH)) 
       8 
       $ intTo8WordColor bgcolor
 
@@ -36,13 +45,24 @@ renderButton renderer (Button _ text (V2 x y) (V2 rW rH) colorRef) = do
       renderTexture renderer textTexture $ V2 (x + w) (y + n)
       SDL.destroyTexture textTexture
     Nothing -> return ()
+  
+  where
+    drawShadow :: IO ()
+    drawShadow = do 
+      let shadowThickness = 10
+          (V2 x y) = buttonPos btn
+          (V2 w h) = buttonSize btn
+          topleft = fromIntegral <$> V2 (x - shadowThickness) (y - shadowThickness)
+          bottomright = fromIntegral <$> V2 (x + w + shadowThickness) (y + h + shadowThickness)
+
+      fillRoundRectangle renderer topleft bottomright 20 $ intTo8WordColor black
 
 renderTexture :: SDL.Renderer -> SDL.Texture -> V2 Int -> IO ()
 renderTexture renderer texture p = do
   textureInfo <- SDL.queryTexture texture
   let tW = SDL.textureWidth textureInfo
       tH = SDL.textureHeight textureInfo
-  let destRect = SDL.Rectangle (SDL.P p) (V2 (fromIntegral tW) (fromIntegral tH))
+  let destRect = SDL.Rectangle (SDL.P p) $ fromIntegral <$> V2 tW  tH
   SDL.copy renderer texture Nothing (Just $ toCIntRect destRect)
 
 renderStaticText :: SDL.Renderer -> StaticText -> IO ()

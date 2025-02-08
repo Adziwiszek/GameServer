@@ -21,8 +21,15 @@ import Ui.Graphics
 import Client (startUiClient)
 import Uno.Common.Types
 import Uno.Defaults ( defaultCard, defaultSBoard )
+import Uno.Utils
 import Utils
 import Types
+
+
+changeButtonColor :: Button -> GColor -> IO ()
+changeButtonColor btn col = do
+    let colorRef = buttonColor btn
+    writeIORef colorRef col
 
 
 chooseCardToShowBehavior :: Behavior Int -> Behavior SBoard ->  Int -> MomentIO (Behavior (Int, Card))
@@ -112,19 +119,43 @@ setupReactivePlayerInfoBar barIndex playerBar eventsource bsboard = do
 
     updatePlayerInfo (GameStateEvent gs) = 
       let (SPlayers players) = otherPlayers gs
-      in let thisplayer = players !! barIndex
-      in splayerName thisplayer ++ ": " ++ show (snumOfCards thisplayer)
+      in if barIndex >= length players
+        then "no player"
+        else 
+          let thisplayer = players !! barIndex
+          in splayerName thisplayer ++ ": " ++ show (snumOfCards thisplayer)
     updatePlayerInfo _ = "no player"
 
     updateBGColor st sboard = do
       let colorRef = stBgColor st
-      let (cid, cname) = currentPlayerInfo sboard
+      let (cid, _) = currentPlayerInfo sboard
       writeIORef colorRef $ 
         if cid == barIndex 
-          then grey
-          else white
+          then white
+          else grey
         
       
+
+setupColorChoice
+  :: Button
+  -> GColor
+  -> EventSource AppEvent
+  -> MomentIO ()
+setupColorChoice btn color eventsource = do
+  appEvent <- fromAddHandler (addHandler eventsource)
+  let ebuttonclicked = filterE (`isButtonEventWithID` showColor color) appEvent 
+      echangedcolor = filterE (\case ChangeColorEvent _ -> True; _ -> False) appEvent
+
+  reactimate $ fmap fireChooseColor ebuttonclicked
+  reactimate $ fmap changeShadow echangedcolor 
+  
+  where
+    changeShadow (ChangeColorEvent newcol) = do
+      updateSelection btn $ color == newcol
+    changeShadow _ = return ()
+    
+    fireChooseColor _ = do
+      fire eventsource $ ChangeColorEvent color
 
 
 runGraphicsClient :: String -> IO ()
@@ -165,6 +196,9 @@ runGraphicsClient username = do
   bup   <- createButton "<-" "left" (V2 20 450) white
   bdown <- createButton "->" "right" (V2 20 500) white
 
+  txtcurrentColor <- createStaticText "current color" "currentColor" (V2 100 0) 
+  btncurrentColor <- createNoTextButton "currentColorBtn" (V2 200 0) (V2 50 50) black
+
   name1     <- createStaticText username "myname"  (V2 650 360)
   bsendmove <- createButton "Send move" "send" (V2 650 420) white
   bdrawCard <- createButton "Draw card(s)" "draw" (V2 650 480) white
@@ -175,9 +209,13 @@ runGraphicsClient username = do
   playerBar3 <- createStaticText "no player" "player2"  (V2 100 250)
   playerBar4 <- createStaticText "no player" "player3"  (V2 100 330)
 
+  let colorChoicePositions = [V2 630 180, V2 700 180, V2 630 250, V2 700 250]
+      colorsToChoose = [red, green, blue, yellow]
+      colorAndPosition = zip colorsToChoose colorChoicePositions
+      colorIds = map showColor colorsToChoose
 
-  testbutton <- createNoTextButton "testbut" (V2 300 20) (V2 50 50) white
-
+  colorChoiceButtons :: [Button] <- forM (zip colorIds colorAndPosition) $
+    \(bid, (color, pos)) -> createNoTextButton bid pos (V2 50 50) color
 
   let widgets :: [Widget]
       widgets = 
@@ -190,8 +228,10 @@ runGraphicsClient username = do
         , WStaticText playerBar4
         , WButton bdrawCard
         , WButton bendturn
-        , WButton testbutton
+        , WStaticText txtcurrentColor
+        , WButton btncurrentColor 
         ] ++ map WImgButton handcards
+        ++ map WButton colorChoiceButtons
 
 
 
@@ -208,10 +248,20 @@ runGraphicsClient username = do
             einitgameinfo = filterE (\case SessionPlayers _ -> True; _ -> False) appEvent
             edrawcard = filterE (`isButtonEventWithID` "draw") appEvent
             eendturn = filterE (`isButtonEventWithID` "endturn") appEvent
-            edupa = filterE (`isButtonEventWithID` "testbut") appEvent
 
         -- Behaviors ==========================================================
         bselectedCards <- accumB [] $ toggleCardChoice appEvent
+
+
+        {-
+         -  TODO
+         -  change current color button based on this event
+         -
+         - -}
+          
+          
+        bcurrentColor <- hold black $ (\(GameStateEvent st) -> getCurrentColor st) <$> egamestate
+        sinkBehavior (changeButtonColor btncurrentColor) bcurrentColor
         
         cardIndexBehavior <- setupCounter 0 eup edown
 
@@ -227,14 +277,15 @@ runGraphicsClient username = do
             setupReactivePlayerInfoBar index pbar appEventSource bboard)
             $ zip [0..] [playerBar1, playerBar2, playerBar3, playerBar4]
 
+        mapM_ (\(btn, color) -> setupColorChoice btn color appEventSource) $ zip colorChoiceButtons colorsToChoose
+
         sinkImageButton topCard btopcard
 
         reactimate $ fmap (`startGame` outchan) estartGame
         reactimate $ fmap (\x -> sendDrawCard x outchan appEventSource) $ bselectedCards <@ edrawcard
         reactimate $ fmap (\x -> sendGameMove x outchan appEventSource) $ (,) <$> bboard <*> bselectedCards <@ esend
-        reactimate $ fmap (\x -> sendEndTurn x outchan) $ eendturn
+        reactimate $ fmap (\x -> sendEndTurn x outchan) eendturn
 
-        reactimate $ fmap (\_ -> putStrLn "DUPPPA") edupa
 
 
   -- network <- setupNetwork appEventSource 
@@ -292,6 +343,9 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
     let staticTexts = filterStaticText widgets
     let imgButtons = filterImageButton widgets
 
+    -- select starting color
+    fire eventSource $ ChangeColorEvent red
+
     -- todo: in this thread convert server messages to AppEvent
     readerThread <- forkIO $ fix $ \loop -> do
       msg <- readChan inchan
@@ -315,7 +369,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
           let qPressed = any eventIsQPress events
 
           -- Rendering
-          rendererDrawColor renderer $= V4 0 0 255 255
+          rendererDrawColor renderer $= V4 61 107 87 255
           clear renderer
           renderButtons renderer buttons 
           renderStaticTexts renderer staticTexts

@@ -28,6 +28,7 @@ data AppEvent
   | ToggleCardChoice Int
   | SessionPlayers [SPlayer]
   | InitPlayerBar (Int, SPlayer)
+  | ChangeColorEvent GColor
 
 {- Graphics =================================================================-}
 type Screen = SDL.Surface
@@ -48,6 +49,7 @@ data Button = Button
   , buttonPos  :: V2 Int
   , buttonSize :: V2 Int
   , buttonColor :: IORef GColor
+  , buttonSelected :: IORef Bool
   }
   
 data ImageButton = ImageButton

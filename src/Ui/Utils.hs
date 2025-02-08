@@ -21,12 +21,20 @@ white = V4 255 255 255 255
 black = V4 0 0 0 255
 grey  = V4 125 125 125 255
 
+red, green, blue, yellow :: V4 Int
+red    = V4 255 0 0 255
+green  = V4 0 255 0 255
+blue   = V4 0 0 255 255
+yellow = V4 255 255 0 255
+
 fRed :: SDL.Font.Color
 fRed = V4 255 0 0 255
 
 fBlack :: SDL.Font.Color
 fBlack = V4 0 0 0 255
 
+showColor :: GColor -> String
+showColor (V4 r g b a) = show r ++ show g ++ show b ++ show a
 
 {-----------------------------------------------------------------------------
     Card tileset  
@@ -131,17 +139,21 @@ class WidgetInteraction a where
   isWidgetHovered :: a -> V2 Int -> Bool 
   isWidgetClicked :: a -> SDL.EventPayload -> Bool
   updateColor     :: a -> GColor -> IO ()
+  updateSelection :: a -> Bool -> IO ()
 
 instance WidgetInteraction Button where
-  isWidgetHovered (Button _ _ (V2 x y) (V2 w h) _) mpos = isPointInRect mpos (x, y, w, h)
+  isWidgetHovered (Button _ _ (V2 x y) (V2 w h) _ _) mpos = isPointInRect mpos (x, y, w, h)
 
   isWidgetClicked button (MouseButtonEvent mouseEv) =
     SDL.mouseButtonEventMotion mouseEv == Pressed &&
     isWidgetHovered button (mousePos mouseEv) 
   isWidgetClicked _ _ = False
 
-  updateColor (Button _ _ _ _ colorRef) newColor = do
+  updateColor (Button _ _ _ _ colorRef _) newColor = do
     writeIORef colorRef newColor 
+
+  updateSelection btn isSelected = do
+    writeIORef (buttonSelected btn) isSelected 
 
 instance WidgetInteraction ImageButton where
   isWidgetHovered (ImageButton _ _ (V2 x y) (V2 w h) _ _) mpos = 
@@ -154,6 +166,9 @@ instance WidgetInteraction ImageButton where
     isWidgetHovered imgButton (mousePos mouseEv) 
   isWidgetClicked _ _ = False
 
+  updateSelection imgbtn isSelected = do
+    writeIORef (ibSelected imgbtn) isSelected
+
 instance WidgetInteraction StaticText where
   updateColor (StaticText _ _ _ colorRef) newColor = do
     writeIORef colorRef newColor 
@@ -164,7 +179,7 @@ isPointInRect (V2 px py) (rx, ry, rw, rh) =
   py >= ry && py <= ry + rh
 
 isMouseOnButton :: V2 Int -> Button -> Bool
-isMouseOnButton mpos (Button _ _ (V2 x y) (V2 w h) _) = isPointInRect mpos (x, y, w, h)
+isMouseOnButton mpos (Button _ _ (V2 x y) (V2 w h) _ _) = isPointInRect mpos (x, y, w, h)
 
 isButtonClicked :: Button -> SDL.EventPayload -> Bool
 isButtonClicked button (MouseButtonEvent mouseEv) =
@@ -175,7 +190,7 @@ isButtonClicked _ _ = False
 mousePos :: SDL.MouseButtonEventData -> V2 Int
 mousePos e =
   let SDL.P (V2 x y) = SDL.mouseButtonEventPos e in
-  V2 (fromIntegral x) (fromIntegral y)
+  fromIntegral <$> V2 x y
 
 -- getWidgetID :: Widget -> String 
 
@@ -205,7 +220,7 @@ widgetEvent sdlSource = do
   return $ buttonClickEvent e
 
 getButtonPosition :: Button -> V2 Int
-getButtonPosition (Button _ _ p _ _) = p
+getButtonPosition (Button _ _ p _ _ _) = p
 
 createButton :: String -> String -> V2 Int -> GColor -> IO Button
 createButton text bID pos color = do
@@ -217,12 +232,14 @@ createButton text bID pos color = do
   let rW = fromIntegral tW + w + e
   let rH = fromIntegral tH + n + s
   colorRef <- newIORef color
-  return $ Button bID (Just txt) pos (V2 rW rH) colorRef
+  selectRef <- newIORef False
+  return $ Button bID (Just txt) pos (V2 rW rH) colorRef selectRef
 
 createNoTextButton :: String -> V2 Int -> V2 Int -> GColor -> IO Button
 createNoTextButton bID pos bsize color = do
   colorRef <- newIORef color
-  return $ Button bID Nothing pos bsize colorRef
+  selectRef <- newIORef False
+  return $ Button bID Nothing pos bsize colorRef selectRef
 
 sinkBehavior :: (a -> IO ()) -> Behavior a -> MomentIO ()
 sinkBehavior updateFunc beh = do
@@ -417,17 +434,15 @@ isToggleCardChoiceEvent :: AppEvent -> Bool
 isToggleCardChoiceEvent (ToggleCardChoice _) = True
 isToggleCardChoiceEvent _ = False
 
-isEventWithID :: AppEvent -> String -> Bool
-isEventWithID (ButtonClickEvent bid) bid' = bid == bid'
 {-----------------------------------------------------------------------------
     Graphics
 ------------------------------------------------------------------------------}
 intTo8WordColor :: V4 Int -> V4 Word8
-intTo8WordColor (V4 r g b a) = V4 (fromIntegral r) (fromIntegral g) (fromIntegral b) (fromIntegral a)
+intTo8WordColor color = fromIntegral <$> color
 
 toCIntRect :: SDL.Rectangle Int -> SDL.Rectangle CInt
 toCIntRect rect =
   let (SDL.Rectangle (SDL.P (V2 x y)) (V2 w h)) = rect in 
-  SDL.Rectangle (SDL.P (V2 (fromIntegral x) (fromIntegral y))) (V2 (fromIntegral w) (fromIntegral h))
+  SDL.Rectangle (SDL.P (fromIntegral <$> V2 x y)) (fromIntegral <$> V2 w h)
 
 
