@@ -196,8 +196,10 @@ runGraphicsClient username = do
   bup   <- createButton "<-" "left" (V2 20 450) white
   bdown <- createButton "->" "right" (V2 20 500) white
 
-  txtcurrentColor <- createStaticText "current color" "currentColor" (V2 100 0) 
-  btncurrentColor <- createNoTextButton "currentColorBtn" (V2 200 0) (V2 50 50) black
+  txtcurrentColor <- createStaticText "current color" "currentColor" (V2 100 4) 
+  btncurrentColor <- createNoTextButton "currentColorBtn" (V2 250 0) (V2 50 50) black
+
+  txtcurrentPlayer <- createStaticText "current player: " "currentPlayer" (V2 350 4)
 
   name1     <- createStaticText username "myname"  (V2 650 360)
   bsendmove <- createButton "Send move" "send" (V2 650 420) white
@@ -230,6 +232,7 @@ runGraphicsClient username = do
         , WButton bendturn
         , WStaticText txtcurrentColor
         , WButton btncurrentColor 
+        , WStaticText txtcurrentPlayer
         ] ++ map WImgButton handcards
         ++ map WButton colorChoiceButtons
 
@@ -252,13 +255,16 @@ runGraphicsClient username = do
         -- Behaviors ==========================================================
         bselectedCards <- accumB [] $ toggleCardChoice appEvent
 
-
+        bcurrentPlayerName <- hold "_" $ 
+            (\(GameStateEvent gs) -> "current player: " ++ snd (currentPlayerInfo gs))
+            <$> egamestate
+        sinkStaticText txtcurrentPlayer bcurrentPlayerName
         {-
          -  TODO
          -  change current color button based on this event
          -
          - -}
-          
+         
           
         bcurrentColor <- hold black $ (\(GameStateEvent st) -> getCurrentColor st) <$> egamestate
         sinkBehavior (changeButtonColor btncurrentColor) bcurrentColor
