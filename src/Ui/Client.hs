@@ -319,6 +319,8 @@ runGraphicsClient username = do
     -> EventSource AppEvent 
     -> IO ()
   sendGameMove (gameState, selectedCards) outchan eventsource = do
+    putStrLn $ "card ids = " ++ show selectedCards
+    putStrLn $ "my hand = " ++ show (myHand gameState)
     let cards = choose selectedCards $ myHand gameState
     putStrLn $ "sending move = " ++ show cards
     -- send players move to the server
@@ -389,6 +391,10 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
 
     writeChan outchan $ Message Server (Types.Text "quit ") 0
 
+    mapM_ Ui.Utils.destroyTexture buttons
+    mapM_ Ui.Utils.destroyTexture staticTexts
+    mapM_ Ui.Utils.destroyTexture imgButtons
+    SDL.destroyTexture textureass
     killThread readerThread
 
 

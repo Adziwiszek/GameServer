@@ -140,24 +140,34 @@ class WidgetInteraction a where
   isWidgetClicked :: a -> SDL.EventPayload -> Bool
   updateColor     :: a -> GColor -> IO ()
   updateSelection :: a -> Bool -> IO ()
+  destroyTexture  :: a -> IO ()
 
 instance WidgetInteraction Button where
-  isWidgetHovered (Button _ _ (V2 x y) (V2 w h) _ _) mpos = isPointInRect mpos (x, y, w, h)
+  isWidgetHovered btn mpos = isMouseOnButton mpos btn
 
   isWidgetClicked button (MouseButtonEvent mouseEv) =
     SDL.mouseButtonEventMotion mouseEv == Pressed &&
     isWidgetHovered button (mousePos mouseEv) 
   isWidgetClicked _ _ = False
 
-  updateColor (Button _ _ _ _ colorRef _) newColor = do
+  updateColor btn newColor = do
+    let colorRef = buttonColor btn
     writeIORef colorRef newColor 
 
   updateSelection btn isSelected = do
     writeIORef (buttonSelected btn) isSelected 
 
+  destroyTexture btn = do
+    mTexture <- readIORef $ buttonTextTexture btn
+    mapM_ SDL.destroyTexture mTexture
+    writeIORef (buttonTextTexture btn) Nothing
+
+
 instance WidgetInteraction ImageButton where
-  isWidgetHovered (ImageButton _ _ (V2 x y) (V2 w h) _ _) mpos = 
-    case map fromIntegral [x, y, w, h] of
+  isWidgetHovered ib mpos = 
+    let (V2 x y) = ibPos ib
+    in let (V2 w h) = ibSize ib
+    in case map fromIntegral [x, y, w, h] of
       [x', y', w', h'] -> isPointInRect mpos (x', y', w', h')
       _ -> False
 
@@ -169,9 +179,19 @@ instance WidgetInteraction ImageButton where
   updateSelection imgbtn isSelected = do
     writeIORef (ibSelected imgbtn) isSelected
 
+  destroyTexture _ = do
+    return ()
+
 instance WidgetInteraction StaticText where
-  updateColor (StaticText _ _ _ colorRef) newColor = do
+  updateColor st newColor = do
+    let colorRef = stBgColor st
     writeIORef colorRef newColor 
+
+  destroyTexture st = do
+    mTexture <- readIORef $ stTexture st
+    mapM_ SDL.destroyTexture mTexture
+    writeIORef (stTexture st) Nothing
+    
 
 isPointInRect :: V2 Int -> (Int, Int, Int, Int) -> Bool
 isPointInRect (V2 px py) (rx, ry, rw, rh) =
@@ -179,7 +199,10 @@ isPointInRect (V2 px py) (rx, ry, rw, rh) =
   py >= ry && py <= ry + rh
 
 isMouseOnButton :: V2 Int -> Button -> Bool
-isMouseOnButton mpos (Button _ _ (V2 x y) (V2 w h) _ _) = isPointInRect mpos (x, y, w, h)
+isMouseOnButton mpos btn = 
+  let (V2 x y) = buttonPos btn
+  in let (V2 w h) = buttonSize btn
+  in isPointInRect mpos (x, y, w, h)
 
 isButtonClicked :: Button -> SDL.EventPayload -> Bool
 isButtonClicked button (MouseButtonEvent mouseEv) =
@@ -205,7 +228,7 @@ createImageButton bId srcRect pos bsize cardid  = do
   rectRef <- newIORef srcRect 
   cardidRef <- newIORef cardid
   selectedRef <- newIORef False 
-  return $ ImageButton bId rectRef pos bsize cardidRef selectedRef 
+  return $ ImageButton bId rectRef pos bsize cardidRef selectedRef
 
 createTextTexture :: MonadIO m => String -> Color -> Font -> SDL.Renderer -> m Texture
 createTextTexture text color font renderer = do
@@ -220,7 +243,7 @@ widgetEvent sdlSource = do
   return $ buttonClickEvent e
 
 getButtonPosition :: Button -> V2 Int
-getButtonPosition (Button _ _ p _ _ _) = p
+getButtonPosition = buttonPos
 
 createButton :: String -> String -> V2 Int -> GColor -> IO Button
 createButton text bID pos color = do
@@ -233,13 +256,15 @@ createButton text bID pos color = do
   let rH = fromIntegral tH + n + s
   colorRef <- newIORef color
   selectRef <- newIORef False
-  return $ Button bID (Just txt) pos (V2 rW rH) colorRef selectRef
+  textureRef <- newIORef Nothing
+  return $ Button bID (Just txt) pos (V2 rW rH) colorRef selectRef textureRef
 
 createNoTextButton :: String -> V2 Int -> V2 Int -> GColor -> IO Button
 createNoTextButton bID pos bsize color = do
   colorRef <- newIORef color
   selectRef <- newIORef False
-  return $ Button bID Nothing pos bsize colorRef selectRef
+  textureRef <- newIORef Nothing
+  return $ Button bID Nothing pos bsize colorRef selectRef textureRef
 
 sinkBehavior :: (a -> IO ()) -> Behavior a -> MomentIO ()
 sinkBehavior updateFunc beh = do
@@ -247,7 +272,6 @@ sinkBehavior updateFunc beh = do
   liftIOLater $ updateFunc initialVal
   e <- changes beh
   reactimate' $ fmap updateFunc <$> e
-
 
 
 -- we connect widget to the behavior, when the string changes we update the text
@@ -269,19 +293,35 @@ getTextBackgroundSize text = do
   return $ V2 bgWidth bgHeight
 
 
+updateStaticTextBackgroundRect :: StaticText -> IO ()
+updateStaticTextBackgroundRect st = do
+  txt <- readIORef $ stTextRef st
+  let (V2 x y) = stPos st
+  (V2 bgW bgH) <- getTextBackgroundSize txt
+  let rect = SDL.Rectangle (SDL.P (V2 x y)) (V2 bgW bgH) 
+  writeIORef (stBackgroundRect st) rect
+
 createStaticText :: String -> String -> V2 Int -> IO StaticText 
 createStaticText text stId pos = do
   font <- SDL.Font.load "Roboto-Black.ttf" 20
   let txt = Ui.Types.Text text font fBlack $ V4 10 10 10 10
   textRef <- newIORef txt
   colorRef <- newIORef white
+  textureRef <- newIORef Nothing
 
-  return $ StaticText stId textRef pos colorRef
+  let (V2 x y) = pos
+  (V2 bgW bgH) <- getTextBackgroundSize txt
+  let rect = SDL.Rectangle (SDL.P (V2 x y)) (V2 bgW bgH) 
+  bgRect <- newIORef rect
+
+  return $ StaticText stId textRef bgRect textureRef pos colorRef
   
 updateStaticText :: StaticText -> String -> IO ()
 updateStaticText staticText newString = do
   oldText <- readIORef (stTextRef staticText)
   writeIORef (stTextRef staticText) $ oldText {_textMsg = newString}
+  writeIORef (stTexture staticText) Nothing
+  updateStaticTextBackgroundRect staticText
 
 updateImageButtonTile :: ImageButton -> Card -> IO ()
 updateImageButtonTile imgb card = do
@@ -308,6 +348,7 @@ filterImageButton = concatMap transWidget
   where
     transWidget (WImgButton st) = [st]
     transWidget _ = []
+
 
 {-----------------------------------------------------------------------------
     Events

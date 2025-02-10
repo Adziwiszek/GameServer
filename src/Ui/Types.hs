@@ -50,6 +50,7 @@ data Button = Button
   , buttonSize :: V2 Int
   , buttonColor :: IORef GColor
   , buttonSelected :: IORef Bool
+  , buttonTextTexture :: IORef (Maybe SDL.Texture)
   }
   
 data ImageButton = ImageButton
@@ -64,6 +65,8 @@ data ImageButton = ImageButton
 data StaticText = StaticText
   { stID      :: String
   , stTextRef :: IORef Text 
+  , stBackgroundRect :: IORef (SDL.Rectangle Int)
+  , stTexture :: IORef (Maybe SDL.Texture)
   , stPos     :: V2 Int
   , stBgColor :: IORef GColor
   }

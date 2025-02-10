@@ -1,6 +1,7 @@
 module Ui.Graphics (module Ui.Graphics) where 
 
 import Control.Monad (when)
+import Control.Exception (bracket)
 import Data.IORef
 import Data.Text (pack)
 import Foreign.C.Types (CInt)
@@ -39,11 +40,16 @@ renderButton renderer btn = do
   case text of
     Just (Text msg font fcolor padding) -> do
       let (V4 w _ n _) = padding
-      textSurface <- SDL.Font.solid font fcolor $ pack msg
-      textTexture <- SDL.createTextureFromSurface renderer textSurface
-      SDL.freeSurface textSurface
-      renderTexture renderer textTexture $ V2 (x + w) (y + n)
-      SDL.destroyTexture textTexture
+      cachedTexture <- readIORef $ buttonTextTexture btn
+      texture <- case cachedTexture of
+        Just t -> return t
+        Nothing -> do
+          surface <- SDL.Font.solid font fcolor $ pack msg
+          tex <- SDL.createTextureFromSurface renderer surface
+          SDL.freeSurface surface
+          writeIORef (buttonTextTexture btn) (Just tex)
+          return tex
+      renderTexture renderer texture $ V2 (x + w) (y + n)
     Nothing -> return ()
   
   where
@@ -74,16 +80,19 @@ renderStaticText renderer st = do
       (V2 x y) = stPos st
       (V4 w _ n _) = padding
 
-  (V2 bgW bgH) <- getTextBackgroundSize text
-
-  let rect = SDL.Rectangle (SDL.P (V2 x y)) (V2 bgW bgH) 
+  rect <- readIORef (stBackgroundRect st)
   SDL.fillRect renderer (Just $ toCIntRect rect)
 
-  textSurface <- SDL.Font.solid font color $ pack msg
-  textTexture <- SDL.createTextureFromSurface renderer textSurface
-  SDL.freeSurface textSurface
-  renderTexture renderer textTexture $ V2 (x + w) (y + n)
-  SDL.destroyTexture textTexture
+  cachedTexture <- readIORef $ stTexture st
+  texture <- case cachedTexture of
+    Just t -> return t
+    Nothing -> do
+      textSurface <- SDL.Font.solid font color $ pack msg
+      textTexture <- SDL.createTextureFromSurface renderer textSurface
+      SDL.freeSurface textSurface
+      writeIORef (stTexture st) $ Just textTexture
+      return textTexture
+  renderTexture renderer texture $ V2 (x + w) (y + n)
 
 renderStaticTexts :: SDL.Renderer -> [StaticText] -> IO ()
 renderStaticTexts renderer = mapM_ (renderStaticText renderer)
