@@ -5,6 +5,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (listToMaybe)
 import Control.Monad.Cont
+import Control.Concurrent.STM 
 import Control.Monad.Random
 import System.IO
 -- import Control.Monad.Fix (fix)
@@ -277,11 +278,11 @@ instance UnoGame TerminalUno where
               return cards 
 
 
-createPlayer :: Int -> Handle -> Chan Message -> String -> Player
+createPlayer :: Int -> Handle -> TChan Message -> String -> Player
 createPlayer pid han chan name = Player pid name [] han chan 
 
 -- type InChan = Chan Message
-type OutChan = Chan Message
+type OutChan = TChan Message
 -- type Players = [(Int, Chan Message, Handle)]
 -- _type Turn = MVar Int
 newtype NetworkUno x = NetworkUno
@@ -311,7 +312,7 @@ instance UnoGame NetworkUno where
       mapM_ (`broadcastStartingInfo` outchan) sboards
 
     where
-      broadcastStartingInfo :: SBoard -> Chan Message -> IO ()
+      broadcastStartingInfo :: SBoard -> TChan Message -> IO ()
       broadcastStartingInfo sboard outchan = do
         let (SPlayers otherplayers) = otherPlayers sboard
         _broadcast outchan (StartingGameInfo otherplayers) (ToPlayer $ myID sboard) (-1)
@@ -319,13 +320,12 @@ instance UnoGame NetworkUno where
   getPlayerMove _ board = NetworkUno $ \outchan _ -> do
     let (Player pid _ _ _ inchan) = getCurrentPlayer board 
 
-    -- TODO send players info about other players at the start
 
     let sboards = map (boardToSBoard board . playerID) $ getAllPlayersList board
     mapM_ (`broadcastOutGameState` outchan) sboards
      
     move <- fix $ \loop -> do
-      testMsg <- readChan inchan 
+      testMsg <- atomically $ readTChan inchan 
       if senderID testMsg == pid 
       then maybe loop return (processUserMsg $ content testMsg)
       else do
@@ -346,7 +346,7 @@ instance UnoGame NetworkUno where
 
     
 
-runNetworkGame :: OutChan -> [(Int, String, Chan Message, Handle)] ->  IO ()
+runNetworkGame :: OutChan -> [(Int, String, TChan Message, Handle)] ->  IO ()
 runNetworkGame outchan serverPlayers = do
     putStrLn "starting game!!!"
     let pl = map (\(pid, name, chan, handle) -> createPlayer pid handle chan name) serverPlayers

@@ -3,10 +3,10 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Ui.Client (runGraphicsClient) where
-import Data.Maybe (listToMaybe)
 import Data.IORef
 import Control.Concurrent
 import Control.Monad.State
+import Control.Concurrent.STM
 import Foreign.C.Types (CInt)
 import SDL
 import SDL.Font
@@ -168,8 +168,8 @@ runGraphicsClient username = do
   renderer <- createRenderer window (-1) defaultRenderer
 
   appEventSource <- createAppEventSource
-  inchan  :: Chan Message <- newChan 
-  outchan :: Chan Message <- newChan
+  inchan  <- atomically newTChan 
+  outchan <- atomically newTChan
   playerid <- newEmptyMVar
   _ <- forkIO $ startUiClient inchan outchan playerid username
 
@@ -303,10 +303,10 @@ runGraphicsClient username = do
 
   where
 
-  startGame :: AppEvent -> Chan Message -> IO ()
+  startGame :: AppEvent -> TChan Message -> IO ()
   startGame appevent outchan = case appevent of 
     ButtonClickEvent _ -> do
-      writeChan outchan $ Message Server (Types.Text ":start ") 0
+      atomically $ writeTChan outchan $ Message Server (Types.Text ":start ") 0
     _ -> return ()
 
   topCardFromEvent :: AppEvent -> Card
@@ -315,7 +315,7 @@ runGraphicsClient username = do
 
   sendGameMove 
     :: (SBoard, [Int]) 
-    -> Chan Message 
+    -> TChan Message 
     -> EventSource AppEvent 
     -> IO ()
   sendGameMove (gameState, selectedCards) outchan eventsource = do
@@ -324,17 +324,19 @@ runGraphicsClient username = do
     let cards = choose selectedCards $ myHand gameState
     putStrLn $ "sending move = " ++ show cards
     -- send players move to the server
-    writeChan outchan $ Message Server (GameMove cards) 0
+    atomically $ writeTChan outchan $ Message Server (GameMove cards) 0
     -- toggle of selected cards
     mapM_ (fire eventsource . ToggleCardChoice) selectedCards
     
   sendDrawCard selectedCards outchan eventsource = do
     putStrLn "drawing card!"
-    writeChan outchan $ Message Server (GameMove [Card (SelfDraw, Null)]) 0
+    atomically $ writeTChan outchan 
+      $ Message Server (GameMove [Card (SelfDraw, Null)]) 0
     mapM_ (fire eventsource . ToggleCardChoice) selectedCards
 
   sendEndTurn _ outchan = do
-    writeChan outchan $ Message Server (GameMove [Card (EndTurn, Null)]) 0
+    atomically $ writeTChan outchan 
+      $ Message Server (GameMove [Card (EndTurn, Null)]) 0
 
 
 -- Read commands and fire corresponding events 
@@ -342,8 +344,8 @@ eventLoop ::
   Renderer -> 
   EventSource AppEvent -> 
   [Widget] -> 
-  Chan Message ->
-  Chan Message ->
+  TChan Message ->
+  TChan Message ->
   Texture ->
   IO ()
 eventLoop renderer eventSource widgets inchan outchan textureass = do
@@ -356,7 +358,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
 
     -- todo: in this thread convert server messages to AppEvent
     readerThread <- forkIO $ fix $ \loop -> do
-      msg <- readChan inchan
+      msg <- atomically $ readTChan inchan
       case content msg of
         Types.Text str -> do
           putStrLn str
@@ -389,7 +391,7 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
     loop
 
 
-    writeChan outchan $ Message Server (Types.Text "quit ") 0
+    atomically $ writeTChan outchan $ Message Server (Types.Text "quit ") 0
 
     mapM_ Ui.Utils.destroyTexture buttons
     mapM_ Ui.Utils.destroyTexture staticTexts

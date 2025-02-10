@@ -5,6 +5,7 @@ import System.IO
 import Control.Exception (bracket, handle, SomeException(..))
 import Control.Monad.Fix (fix)
 import Control.Concurrent
+import Control.Concurrent.STM
 import System.Timeout
 import Control.Monad (when)
 -- import System.Console.ANSI (clearScreen)
@@ -17,7 +18,7 @@ import Uno.Uno
 
 type PlayerID = MVar Int
 
-type MessageChan = Chan Message
+type MessageChan = TChan Message
 
 startClient :: IO ()
 startClient = do
@@ -46,7 +47,7 @@ startClient = do
 handleConnection :: (Socket, Handle) -> PlayerID -> IO ()
 handleConnection (_, hdl) playerId = do
   -- channel for passing messages between threads
-  messageChan <- newChan
+  messageChan <- atomically newTChan
 
   readerThread <- forkIO $ fix $ \loop -> do
     msg <- receiveMessage hdl
@@ -61,7 +62,7 @@ handleConnection (_, hdl) playerId = do
       -- when we get Bye message we signal main thread to finish
       Text "Bye!" -> do
         putStrLn "Bye!" 
-        writeChan messageChan "DISCONNECT"
+        atomically $ writeTChan messageChan "DISCONNECT"
       GameState gs -> do
         --clearScreen
         callCommand "clear"
@@ -86,7 +87,7 @@ handleConnection (_, hdl) playerId = do
         -- sendStr hdl (msg ++ " ") myID 
         case msg of
           "quit" -> do
-            result <- timeout 500000 $ readChan messageChan
+            result <- timeout 500000 (atomically $ readTChan messageChan)
             case result of
               Nothing -> putStrLn "Server not responding. Forcing disconnect..."
               Just _ -> return ()
@@ -123,7 +124,7 @@ startUiClient inchan outchan playerId pName = do
   let port = "4242"
   putStrLn "Attempting to connect..."
 
-  writeChan outchan $ Message Server (Text (pName ++ "_"))  (-1)
+  atomically $ writeTChan outchan $ Message Server (Text (pName ++ "_"))  (-1)
 
   -- Use bracket to ensure proper cleanup
   bracket (connect' host port) cleanup (\x -> handleConnection2 x inchan outchan playerId)
@@ -144,7 +145,7 @@ startUiClient inchan outchan playerId pName = do
 handleConnection2 :: (Socket, Handle) -> MessageChan -> MessageChan -> PlayerID -> IO ()
 handleConnection2 (_, hdl) inchan outchan playerId = do
   -- channel for passing messages between threads
-  messageChan <- newChan
+  messageChan <- atomically newTChan
 
   readerThread <- forkIO $ fix $ \loop -> do
     msg <- receiveMessage hdl
@@ -155,18 +156,18 @@ handleConnection2 (_, hdl) inchan outchan playerId = do
         Text "INIT_ID" -> initPlayerId msg
         _ -> return ()
       -- we write to inchan and let main event loop deal with this message
-      writeChan inchan msg
+      atomically $ writeTChan inchan msg
       loop
 
   -- sender thread
   handle handleSenderThreadException $ fix $ \loop -> do
-    msg <- readChan outchan
+    msg <- atomically $ readTChan outchan
     myId <- readMVar playerId
     sendToServer hdl msg myId
     -- check if we want to disconnect from the server (right now clunky)
     case content msg of
       Text "quit" -> do
-        result <- timeout 500000 $ readChan messageChan
+        result <- timeout 500000 (atomically $ readTChan messageChan)
         case result of
           Nothing -> putStrLn "Server not responding. Forcing disconnect..."
           Just _ -> return ()

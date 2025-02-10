@@ -4,18 +4,16 @@ import Network.Socket
 import System.IO
 import Control.Exception
 import Control.Concurrent
--- import Control.Monad (when)
 import Control.Monad.State
--- import Control.Monad.Fix (fix)
+import Control.Concurrent.STM
 import Data.Functor
--- import qualified Data.Map as Map
 
 import Message
 import Types
 import Uno.Uno (runNetworkGame)
 
 type GameStarted = MVar Bool
-type ServerPlayers = MVar [(Int, String, Chan Message, Handle)]
+type ServerPlayers = MVar [(Int, String, TChan Message, Handle)]
 type Turn = MVar Int
 
   
@@ -43,18 +41,12 @@ startServer = do
   setSocketOption sock ReuseAddr 1
   bind sock (SockAddrInet 4242 0)
   listen sock 2
-  chan <- newChan
-
-  {-_ <- forkIO $ fix $ \loop -> do
-    msg <- readChan chan
-    _players <- readMVar players
-    sendOutAll msg $ map (\(pId, _, hdl) -> (pId, hdl)) _players
-    loop-}
+  chan <- atomically newTChan
 
   putStrLn "Running server on localhost, port = 4242"
   mainLoop sock chan 0 gameStarted players turn
 
-mainLoop :: Socket -> Chan Message -> Int -> GameStarted -> ServerPlayers -> Turn -> IO ()
+mainLoop :: Socket -> TChan Message -> Int -> GameStarted -> ServerPlayers -> Turn -> IO ()
 mainLoop sock chan msgNum gs players turn = do
   putStrLn "waiting for a connection..."
   conn <- accept sock
@@ -63,11 +55,11 @@ mainLoop sock chan msgNum gs players turn = do
   mainLoop sock chan (msgNum + 1) gs players turn
 
 
-runConn :: (Socket, SockAddr) -> Chan Message -> Int -> GameStarted -> ServerPlayers -> Turn -> IO ()
+runConn :: (Socket, SockAddr) -> TChan Message -> Int -> GameStarted -> ServerPlayers -> Turn -> IO ()
 runConn (sock, _) chan msgNum gs players _ = do
   let playerId = msgNum
-  commLine <- dupChan chan
-  inChan <- newChan
+  commLine <- atomically $ dupTChan chan
+  inChan <- atomically newTChan
 
   hdl <- socketToHandle sock ReadWriteMode
   hSetBuffering hdl NoBuffering
@@ -81,7 +73,7 @@ runConn (sock, _) chan msgNum gs players _ = do
   modifyMVar_ players $ \pl -> return $ (playerId, name, inChan, hdl) : pl
 
   senderThread <- forkIO $ fix $ \loop -> do
-    msg <- readChan commLine
+    msg <- atomically $ readTChan commLine
     sendOutMsg hdl msg playerId
     loop
 
@@ -95,7 +87,7 @@ runConn (sock, _) chan msgNum gs players _ = do
         case line of
           "quit" -> do
             -- sendStr hdl "Bye!" playerID
-            writeChan commLine $ Message (ToPlayer playerId) (Text "Bye!") (-1) 
+            atomically $ writeTChan commLine $ Message (ToPlayer playerId) (Text "Bye!") (-1) 
             putStrLn $ "user " ++ name ++ " is quiting.."
           ':' : "start" -> do
             --writeChan commLine $ Message Text All "Starting the game..." (-1)
@@ -106,21 +98,22 @@ runConn (sock, _) chan msgNum gs players _ = do
           _ -> do
             currentGS <- readMVar gs
             unless currentGS 
-                $ writeChan commLine 
+                $ atomically $ writeTChan commLine 
                 $ Message Normal (Text (name ++ ": " ++ line)) (senderID msg)
             loop
       GameMove m -> do
         currentGS <- readMVar gs
         when currentGS $ do
           -- currentTurn <- readMVar turn
-          writeChan inChan (Message Server (GameMove m) playerId)
+          atomically $ writeTChan inChan (Message Server (GameMove m) playerId)
         loop
       GameState _ -> loop
       StartingGameInfo _ -> loop
 
 
   killThread senderThread                      
-  writeChan chan $ Message Normal (Text ("<-- " ++ name ++ " left.")) playerId
+  atomically $ writeTChan chan 
+      $ Message Normal (Text ("<-- " ++ name ++ " left.")) playerId
   hClose hdl                             
 
     

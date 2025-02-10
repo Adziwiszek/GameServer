@@ -4,6 +4,7 @@ module Uno.Types where
 
 import GHC.Generics (Generic)
 import Control.Concurrent
+import Control.Concurrent.STM.TChan
 import System.IO
 import Data.Binary
 
@@ -22,7 +23,7 @@ data Player = Player
   , playerName :: String
   , playerHand     :: [Card]
   , playerHandle :: Handle
-  , playerChannel :: Chan Message
+  , playerChannel :: TChan Message
   } deriving (Generic)
 instance Show Player where
   show (Player _ name _ _ _) = "Player: " ++ name ++ " "

@@ -48,7 +48,8 @@ executable GameServer
                        sdl2-image,
                        text,
                        reactive-banana,
-                       random
+                       random,
+                       stm
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities

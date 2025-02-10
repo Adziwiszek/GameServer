@@ -2,6 +2,8 @@ module Message (module Message) where
 
 import qualified Data.ByteString.Lazy as BSL
 import Control.Concurrent
+import Control.Concurrent.STM.TChan
+import Control.Concurrent.STM (atomically)
 import Data.Binary
 import Data.Int
 import System.IO
@@ -18,17 +20,17 @@ class MessageSender a where
   deriving (Generic, Show) -}
 
 
-_broadcast :: Chan Message -> MessageContent -> MessageTarget -> Int -> IO ()
-_broadcast chan msg targ sID = writeChan chan $ Message {
+_broadcast :: TChan Message -> MessageContent -> MessageTarget -> Int -> IO ()
+_broadcast chan msg targ sID = atomically $ writeTChan chan $ Message {
     messageTarget=targ,
     content=msg,
     senderID=sID
   }
 
-sendToPlayer :: Chan Message -> Int -> MessageContent -> IO ()
-sendToPlayer chan playerId msgContent = do
+sendToPlayer :: TChan Message -> Int -> MessageContent -> IO ()
+sendToPlayer chan playerId msgContent = atomically $ do
   let msg = Message {messageTarget=ToPlayer playerId, content=msgContent, senderID= -1}
-  writeChan chan msg
+  writeTChan chan msg
 
 sendMessage :: Handle -> Message -> IO ()
 sendMessage hdl msg = do
