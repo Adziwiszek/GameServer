@@ -251,6 +251,7 @@ runGraphicsClient username = do
             einitgameinfo = filterE (\case SessionPlayers _ -> True; _ -> False) appEvent
             edrawcard = filterE (`isButtonEventWithID` "draw") appEvent
             eendturn = filterE (`isButtonEventWithID` "endturn") appEvent
+            ecolorchoice = filterE (\case ChangeColorEvent _ -> True; _ -> False) appEvent
 
         -- Behaviors ==========================================================
         bselectedCards <- accumB [] $ toggleCardChoice appEvent
@@ -259,12 +260,8 @@ runGraphicsClient username = do
             (\(GameStateEvent gs) -> "current player: " ++ snd (currentPlayerInfo gs))
             <$> egamestate
         sinkStaticText txtcurrentPlayer bcurrentPlayerName
-        {-
-         -  TODO
-         -  change current color button based on this event
-         -
-         - -}
          
+        bselectedColor <- hold red $ fmap (\(ChangeColorEvent col) -> col) ecolorchoice
           
         bcurrentColor <- hold black $ (\(GameStateEvent st) -> getCurrentColor st) <$> egamestate
         sinkBehavior (changeButtonColor btncurrentColor) bcurrentColor
@@ -276,20 +273,23 @@ runGraphicsClient username = do
         btopcard <- hold defaultCard $ fmap topCardFromEvent egamestate 
 
         -- Making Events and Behaviors actually do stuff ======================
-        mapM_ (\(index, imgb) -> setupReactiveCard index imgb appEvent appEventSource cardIndexBehavior bboard bselectedCards)
+        mapM_ (\(index, imgb) -> 
+            setupReactiveCard index imgb appEvent appEventSource cardIndexBehavior bboard bselectedCards)
             $ zip [0..] handcards
         
         mapM_ (\(index, pbar) ->
             setupReactivePlayerInfoBar index pbar appEventSource bboard)
             $ zip [0..] [playerBar1, playerBar2, playerBar3, playerBar4]
 
-        mapM_ (\(btn, color) -> setupColorChoice btn color appEventSource) $ zip colorChoiceButtons colorsToChoose
+        mapM_ (\(btn, color) -> 
+          setupColorChoice btn color appEventSource) $ zip colorChoiceButtons colorsToChoose
 
         sinkImageButton topCard btopcard
 
         reactimate $ fmap (`startGame` outchan) estartGame
         reactimate $ fmap (\x -> sendDrawCard x outchan appEventSource) $ bselectedCards <@ edrawcard
-        reactimate $ fmap (\x -> sendGameMove x outchan appEventSource) $ (,) <$> bboard <*> bselectedCards <@ esend
+        reactimate $ fmap (\x -> sendGameMove x outchan appEventSource) $ 
+            liftA3 (,,) bboard bselectedCards bselectedColor <@ esend
         reactimate $ fmap (\x -> sendEndTurn x outchan) eendturn
 
 
@@ -314,17 +314,23 @@ runGraphicsClient username = do
   topCardFromEvent _ = defaultCard
 
   sendGameMove 
-    :: (SBoard, [Int]) 
+    :: (SBoard, [Int], V4 Int) 
     -> TChan Message 
     -> EventSource AppEvent 
     -> IO ()
-  sendGameMove (gameState, selectedCards) outchan eventsource = do
+  sendGameMove (gameState, selectedCards, selectedColor) outchan eventsource = do
     putStrLn $ "card ids = " ++ show selectedCards
     putStrLn $ "my hand = " ++ show (myHand gameState)
-    let cards = choose selectedCards $ myHand gameState
+    -- get currently selected color
+    let color = colorToCardColor selectedColor
+    -- add that color to selected cards
+    let cards = map (`colorCards`  color) $ choose selectedCards $ myHand gameState
+
     putStrLn $ "sending move = " ++ show cards
+
     -- send players move to the server
     atomically $ writeTChan outchan $ Message Server (GameMove cards) 0
+
     -- toggle of selected cards
     mapM_ (fire eventsource . ToggleCardChoice) selectedCards
     
@@ -338,6 +344,10 @@ runGraphicsClient username = do
     atomically $ writeTChan outchan 
       $ Message Server (GameMove [Card (EndTurn, Null)]) 0
 
+  colorCards :: Card -> CardColor -> Card
+  colorCards (Card (AddColorless (n, _), c)) col = Card (AddColorless (n, col), c)
+  colorCards (Card (ChangeColor _, c)) col = Card (ChangeColor col, c)
+  colorCards x _ = x
 
 -- Read commands and fire corresponding events 
 eventLoop :: 
@@ -368,6 +378,8 @@ eventLoop renderer eventSource widgets inchan outchan textureass = do
           return ()
         Types.StartingGameInfo ginfo -> do
           mapM_ (\(i, p) -> fire eventSource $ InitPlayerBar (i, p)) $ zip [0..] ginfo
+        Types.GameEvent gameEvent -> do
+          putStrLn $ "new game event!!!\n" ++ show gameEvent
         _ -> return ()
       loop
 

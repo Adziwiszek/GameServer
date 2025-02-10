@@ -135,6 +135,8 @@ getCardRole :: Card -> CardRole
 getCardRole (Card (r, _)) = r
 
 getCardColor :: Card -> CardColor
+getCardColor (Card (AddColorless (_, c), _)) = c
+getCardColor (Card (ChangeColor c, _)) = c
 getCardColor (Card (_, c)) = c
 
 getTopCard :: Board -> Card

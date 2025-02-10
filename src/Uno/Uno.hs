@@ -320,19 +320,18 @@ instance UnoGame NetworkUno where
   getPlayerMove _ board = NetworkUno $ \outchan _ -> do
     let (Player pid _ _ _ inchan) = getCurrentPlayer board 
 
-    oldMessages <- drainTChan inchan
-    putStrLn $ "old messages = " ++ show oldMessages
+    _ <- drainTChan inchan
 
     let sboards = map (boardToSBoard board . playerID) $ getAllPlayersList board
     mapM_ (`broadcastOutGameState` outchan) sboards
+
+    let toDraw = addToPlayer board
+    when (toDraw > 0) $ sendGameEvent (CardsToDraw toDraw) outchan pid
      
     move <- fix $ \loop -> do
       testMsg <- atomically $ readTChan inchan 
-      if senderID testMsg == pid 
-      then maybe loop return (processUserMsg $ content testMsg)
-      else do
-        _broadcast outchan (Text "Move from wrong player!") All 0
-        loop
+      maybe loop return (processUserMsg $ content testMsg)
+
     putStrLn $ "move  = " ++ show move
     return move
   
@@ -345,6 +344,10 @@ instance UnoGame NetworkUno where
     processUserMsg (GameMove []) = Nothing
     processUserMsg (GameMove move) = Just move
     processUserMsg _ = Nothing
+
+    sendGameEvent :: GameEventMessage -> OutChan -> Int -> IO ()
+    sendGameEvent event outchan pid = do
+      _broadcast outchan (GameEvent event) (ToPlayer pid) 0
 
     
 

@@ -36,6 +36,14 @@ fBlack = V4 0 0 0 255
 showColor :: GColor -> String
 showColor (V4 r g b a) = show r ++ show g ++ show b ++ show a
 
+colorToCardColor :: V4 Int -> CardColor
+colorToCardColor col
+  | col == red    = Red
+  | col == blue   = Blue
+  | col == green  = Green
+  | col == yellow = Yellow
+  | otherwise     = Colorless
+
 {-----------------------------------------------------------------------------
     Card tileset  
 ------------------------------------------------------------------------------}
@@ -57,14 +65,17 @@ makeColorMap col =
   zip ([Card (Number i, col) | i <- [0..9]] ++ [Card (Skip, col), Card (Add 2, col),  Card (Switch, col)]) $
   zip [0..] [colKey | _ <- [1..13]] 
 
+allColors :: [CardColor]
+allColors = [Red, Green, Yellow, Blue, Null, Colorless]
+
 colorTextureTileMap :: [(Card, (CInt, CInt))]
 colorTextureTileMap = 
   let colorMaps = concatMap makeColorMap [Red, Green, Yellow, Blue]
-  in colorMaps ++ 
-    [ (Card (AddColorless (4, Null), Colorless), (0, 4))
-    , (Card (ChangeColor Null, Colorless), (1, 4))
-    , (Card (Blank, Colorless), (2, 4))
-    ]
+  in colorMaps
+    ++ [(Card (AddColorless (4, c), Colorless), (1, 4)) | c <- allColors]
+    ++ [(Card (ChangeColor c, Colorless), (0, 4)) | c <- allColors]
+    ++ [(Card (Blank, Colorless), (2, 4))]
+
 
 getTileRect :: (CInt, CInt) -> SDL.Rectangle CInt
 getTileRect (x, y) = Rectangle 

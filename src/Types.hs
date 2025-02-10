@@ -15,6 +15,7 @@ import Uno.Common.Types
 
 data MessageContent
   = Text String
+  | GameEvent GameEventMessage
   | GameState SBoard
   | GameMove [Card]
   | StartingGameInfo [SPlayer]

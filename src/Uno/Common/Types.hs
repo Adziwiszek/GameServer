@@ -5,6 +5,19 @@ module Uno.Common.Types where
 import GHC.Generics (Generic)
 import Data.Binary (Binary)
 
+
+{-----------------------------------------------------------------------------
+    Game messages 
+ -----------------------------------------------------------------------------}
+ 
+data GameEventMessage
+  = CardsToDraw Int
+  | TurnsToSkip Int
+  | TurnLeftToSkip Int
+  | WrongTurn
+  deriving (Eq, Show, Generic)
+instance Binary GameEventMessage
+
 {-----------------------------------------------------------------------------
     Card and Direction
     todo: explain why this split
