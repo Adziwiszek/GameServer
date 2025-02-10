@@ -2,6 +2,7 @@ module Uno.Utils ( module Uno.Utils ) where
 
 import Control.Monad.Cont
 import Control.Monad.Random
+import Control.Concurrent.STM (atomically, tryReadTChan, TChan)
 import System.IO
 
 import Uno.Common.Types
@@ -10,6 +11,14 @@ import Uno.Defaults
 import Ui.Types
 import Ui.Utils
 import Utils
+
+
+drainTChan :: TChan a -> IO [a]
+drainTChan chan = do
+  mItem <- atomically $ tryReadTChan chan
+  case mItem of
+    Nothing   -> return []
+    Just item -> (item :) <$> drainTChan chan
 
 {-----------------------------------------------------------------------------
     Board

@@ -320,6 +320,8 @@ instance UnoGame NetworkUno where
   getPlayerMove _ board = NetworkUno $ \outchan _ -> do
     let (Player pid _ _ _ inchan) = getCurrentPlayer board 
 
+    oldMessages <- drainTChan inchan
+    putStrLn $ "old messages = " ++ show oldMessages
 
     let sboards = map (boardToSBoard board . playerID) $ getAllPlayersList board
     mapM_ (`broadcastOutGameState` outchan) sboards
