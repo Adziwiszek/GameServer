@@ -7,6 +7,13 @@ import Client
 import Server
 import Ui.Client as UIClient
 
+{- TODO
+ -
+ - fix multiple cards being played when user only clicks one
+ -
+ -
+ - -}
+
 data AppType 
   = Server
   | Client
@@ -29,10 +36,10 @@ parse ["-h"] = do
 parse ["server"] = do
   putStrLn "Starting server...!"
   return Server
-parse ["client"] = do 
+parse ["---"] = do 
   putStrLn "Starting client..."
   return Client
-parse ["g"] = do
+parse ["client"] = do
   putStr "Enter your name: "
   hFlush stdout
   username <- getLine

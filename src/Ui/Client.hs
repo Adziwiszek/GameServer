@@ -327,6 +327,7 @@ runGraphicsClient username = do
     let cards = map (`colorCards`  color) $ choose selectedCards $ myHand gameState
 
     putStrLn $ "sending move = " ++ show cards
+    putStrLn $ "selected cards = " ++ show selectedCards
 
     -- send players move to the server
     atomically $ writeTChan outchan $ Message Server (GameMove cards) 0

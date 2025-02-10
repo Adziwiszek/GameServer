@@ -46,6 +46,12 @@ data CardRole
 instance Binary CardRole
 
 newtype Card = Card (CardRole, CardColor) deriving (Eq, Show, Generic)
+{-instance Eq Card where
+  Card (r1, c1) == Card (r2, c2) = case (r1, r2) of
+    (ChangeColor _, ChangeColor _) -> True
+    (AddColorless (n1, _), AddColorless (n2, _)) -> n1 == n2
+    _ -> r1 == r1 && c1 == c2-}
+  
 instance Binary Card
 
 data Direction = DLeft | DRight deriving (Show, Generic)
